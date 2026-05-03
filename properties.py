@@ -2,8 +2,29 @@ import bpy
 
 def auto_update_tree(self, context):
     if context.active_object:
+        obj = context.active_object
+        
+        # --- AUTO-ASPECT RATIO PER IL CANVAS ---
+        # Se stiamo caricando un'immagine/video nel primo livello (Background)
+        try:
+            if len(obj.raster_layers) > 0 and self == obj.raster_layers[0]:
+                if self.image and self.image.size[0] > 0 and self.image.size[1] > 0:
+                    w = self.image.size[0]
+                    h = self.image.size[1]
+                    
+                    # Calcola il rapporto e scala il piano 3D
+                    if w >= h:
+                        obj.scale.x = w / h
+                        obj.scale.y = 1.0
+                    else:
+                        obj.scale.x = 1.0
+                        obj.scale.y = h / w
+        except Exception:
+            pass
+        # ---------------------------------------
+
         from .engine import rebuild_node_tree
-        rebuild_node_tree(context.active_object)
+        rebuild_node_tree(obj)
 
 class RasterLayerItem(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty(name="Name", default="New Layer")

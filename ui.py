@@ -69,7 +69,6 @@ class VIEW3D_PT_raster_layers(bpy.types.Panel):
 
         layout.separator()
         
-        # --- BLOCCO PULSANTI UTILITY AGGIORNATO ---
         box_utils = layout.box()
         col = box_utils.column(align=True)
         col.scale_y = 1.2
@@ -77,7 +76,9 @@ class VIEW3D_PT_raster_layers(bpy.types.Panel):
         
         row = col.row(align=True)
         row.operator("raster.merge_visible", icon='IMAGE_BACKGROUND', text="Merge")
-        row.operator("raster.setup_camera", icon='OUTLINER_OB_CAMERA', text="Frame Camera") # <-- NUOVO PULSANTE QUI
+        row.operator("raster.resize_canvas", icon='FULLSCREEN_ENTER', text="Resize Canvas")
+        
+        col.operator("raster.setup_camera", icon='OUTLINER_OB_CAMERA', text="Frame Camera")
 
         if context.mode == 'PAINT_TEXTURE':
             layout.separator()

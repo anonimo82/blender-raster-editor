@@ -1,4 +1,5 @@
 import bpy
+import numpy as np
 from .engine import rebuild_node_tree
 
 class RASTER_OT_create_canvas(bpy.types.Operator):
@@ -221,7 +222,74 @@ class RASTER_OT_remove_mask(bpy.types.Operator):
         rebuild_node_tree(obj)
         return {'FINISHED'}
 
-# --- NUOVO OPERATORE PER LA TELECAMERA ---
+class RASTER_OT_resize_canvas(bpy.types.Operator):
+    bl_idname = "raster.resize_canvas"
+    bl_label = "Resize Canvas"
+    bl_description = "Change resolution of all layers (adds empty space, no stretching)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    new_width: bpy.props.IntProperty(name="Width", default=1024, min=1)
+    new_height: bpy.props.IntProperty(name="Height", default=1024, min=1)
+
+    def invoke(self, context, event):
+        obj = context.active_object
+        if obj and obj.raster_layers:
+            for layer in obj.raster_layers:
+                if layer.image and layer.image.source not in {'MOVIE', 'SEQUENCE'}:
+                    self.new_width = layer.image.size[0]
+                    self.new_height = layer.image.size[1]
+                    break
+        return context.window_manager.invoke_props_dialog(self)
+
+    def resize_image_canvas(self, image):
+        if not image or image.source in {'MOVIE', 'SEQUENCE'}: 
+            return image
+            
+        old_w, old_h = image.size
+        if old_w == self.new_width and old_h == self.new_height:
+            return image
+
+        old_pixels = np.empty(old_w * old_h * 4, dtype=np.float32)
+        image.pixels.foreach_get(old_pixels)
+        old_pixels = old_pixels.reshape((old_h, old_w, 4))
+
+        new_pixels = np.zeros((self.new_height, self.new_width, 4), dtype=np.float32)
+
+        y_off = max((self.new_height - old_h) // 2, 0)
+        x_off = max((self.new_width - old_w) // 2, 0)
+        old_start_y = max((old_h - self.new_height) // 2, 0)
+        old_start_x = max((old_w - self.new_width) // 2, 0)
+
+        copy_h = min(old_h, self.new_height)
+        copy_w = min(old_w, self.new_width)
+
+        new_pixels[y_off:y_off+copy_h, x_off:x_off+copy_w] = \
+            old_pixels[old_start_y:old_start_y+copy_h, old_start_x:old_start_x+copy_w]
+
+        new_img = bpy.data.images.new(name=f"{image.name}_Resized", width=self.new_width, height=self.new_height, alpha=True)
+        new_img.pixels.foreach_set(new_pixels.ravel())
+        return new_img
+
+    def execute(self, context):
+        obj = context.active_object
+        
+        for layer in obj.raster_layers:
+            layer.image = self.resize_image_canvas(layer.image)
+            layer.mask_image = self.resize_image_canvas(layer.mask_image)
+
+        ratio = self.new_width / self.new_height
+        max_dim = max(obj.dimensions.x, obj.dimensions.y)
+        if ratio >= 1:
+            obj.dimensions.x = max_dim
+            obj.dimensions.y = max_dim / ratio
+        else:
+            obj.dimensions.y = max_dim
+            obj.dimensions.x = max_dim * ratio
+
+        rebuild_node_tree(obj)
+        self.report({'INFO'}, "Canvas resized successfully!")
+        return {'FINISHED'}
+
 class RASTER_OT_setup_camera(bpy.types.Operator):
     bl_idname = "raster.setup_camera"
     bl_label = "Frame Camera"
@@ -233,29 +301,21 @@ class RASTER_OT_setup_camera(bpy.types.Operator):
             self.report({'WARNING'}, "Select the Canvas first.")
             return {'CANCELLED'}
 
-        # Cerca una telecamera o ne crea una nuova
         cam_obj = next((ob for ob in context.scene.objects if ob.type == 'CAMERA'), None)
         if not cam_obj:
             cam_data = bpy.data.cameras.new("Canvas_Camera")
             cam_obj = bpy.data.objects.new("Canvas_Camera", cam_data)
             context.collection.objects.link(cam_obj)
         
-        # Imposta come telecamera attiva della scena
         context.scene.camera = cam_obj
 
-        # Posiziona la telecamera esattamente sopra il Canvas (assumendo che sia sul piano XY)
         cam_obj.location = (obj.location.x, obj.location.y, obj.location.z + 5.0)
-        # La fa puntare verso il basso (-Z)
         cam_obj.rotation_euler = (0.0, 0.0, 0.0)
-        
-        # Imposta la telecamera in modalità Ortografica
         cam_obj.data.type = 'ORTHO'
         
-        # Calcola la scala ortografica per abbracciare tutto il piano
         max_dim = max(obj.dimensions.x, obj.dimensions.y)
         cam_obj.data.ortho_scale = max_dim
 
-        # Adatta l'Aspect Ratio del Render alla forma del Canvas
         render = context.scene.render
         if obj.dimensions.y > 0 and obj.dimensions.x > 0:
             ratio = obj.dimensions.x / obj.dimensions.y
@@ -265,6 +325,12 @@ class RASTER_OT_setup_camera(bpy.types.Operator):
             else:
                 render.resolution_y = 1920
                 render.resolution_x = int(1920 * ratio)
+
+        # Cambia automaticamente la vista alla Telecamera
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.spaces[0].region_3d.view_perspective = 'CAMERA'
+                break
 
         self.report({'INFO'}, "Camera framed perfectly!")
         return {'FINISHED'}
@@ -280,7 +346,8 @@ classes = (
     RASTER_OT_set_active_layer,
     RASTER_OT_create_mask,
     RASTER_OT_remove_mask,
-    RASTER_OT_setup_camera # Aggiunto qui
+    RASTER_OT_resize_canvas,
+    RASTER_OT_setup_camera
 )
 
 def register():
