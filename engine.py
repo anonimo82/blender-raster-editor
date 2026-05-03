@@ -12,7 +12,6 @@ def rebuild_node_tree(obj):
     if not principled: 
         return
 
-    # Pulisce la vecchia struttura
     manager_frame = nodes.get("LAYER_MANAGER_FRAME")
     if manager_frame:
         for node in list(nodes):
@@ -21,7 +20,7 @@ def rebuild_node_tree(obj):
     else:
         manager_frame = nodes.new('NodeFrame')
         manager_frame.name = "LAYER_MANAGER_FRAME"
-        manager_frame.label = "⚠ MANAGED BY LAYER MANAGER ⚠"
+        manager_frame.label = "⚠ MANAGED BY LAYER MANAGER - DO NOT MODIFY MANUALLY ⚠"
         manager_frame.label_size = 20
 
     visible_layers = [l for l in obj.raster_layers if l.is_visible]
@@ -36,7 +35,6 @@ def rebuild_node_tree(obj):
 
     for index, layer in enumerate(visible_layers):
         
-        # Genera il Node Group per il layer
         if not layer.group_name or layer.group_name not in bpy.data.node_groups or "Factor" not in bpy.data.node_groups[layer.group_name].interface.items_tree:
             ng = bpy.data.node_groups.new(name=f"Group_{layer.name}", type='ShaderNodeTree')
             ng.interface.new_socket(name="Color", in_out='OUTPUT', socket_type='NodeSocketColor')
@@ -62,7 +60,6 @@ def rebuild_node_tree(obj):
             ng.links.new(t_main.outputs['Color'], out.inputs['Color'])
             ng.links.new(math.outputs['Value'], out.inputs['Factor'])
 
-        # Aggiornamento dei dati (Immagini, Video e Maschere)
         ng = bpy.data.node_groups.get(layer.group_name)
         if ng:
             t_main = ng.nodes.get("MainTexture")
@@ -90,7 +87,6 @@ def rebuild_node_tree(obj):
                         ng.links.remove(link)
                     math.inputs[0].default_value = 1.0
 
-        # Posizionamento
         group_node = nodes.new('ShaderNodeGroup')
         group_node.node_tree = ng
         group_node.parent = manager_frame
@@ -113,7 +109,6 @@ def rebuild_node_tree(obj):
 
     links.new(previous_output, principled.inputs['Base Color'])
 
-    # SELEZIONE DEL NODO ATTIVO PER IL TEXTURE PAINT
     active_idx = getattr(obj, "raster_active_index", 0)
     is_mask = getattr(obj, "raster_active_is_mask", False)
     

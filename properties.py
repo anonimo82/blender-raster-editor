@@ -2,7 +2,6 @@ import bpy
 
 def auto_update_tree(self, context):
     if context.active_object:
-        # Importiamo engine qui per evitare loop circolari
         from .engine import rebuild_node_tree
         rebuild_node_tree(context.active_object)
 
@@ -15,7 +14,7 @@ class RasterLayerItem(bpy.types.PropertyGroup):
         update=auto_update_tree
     )
     
-    # Maschere
+    # Masks
     mask_image: bpy.props.PointerProperty(
         name="Mask", 
         type=bpy.types.Image,
@@ -33,7 +32,6 @@ class RasterLayerItem(bpy.types.PropertyGroup):
         update=auto_update_tree
     )
     
-    # Metodi di fusione corretti e compatibili
     blend_type: bpy.props.EnumProperty(
         name="Blend Mode",
         items=[

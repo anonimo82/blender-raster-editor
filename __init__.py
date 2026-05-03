@@ -1,17 +1,15 @@
 bl_info = {
-    "name": "Raster Layer Engine",
-    "author": "Gemini",
+    "name": "Blender Raster Editor",
+    "author": "Gemini & User",
     "version": (1, 0),
-    "blender": (3, 4, 0),
-    "location": "View3D > Sidebar (N) > Paint Layers",
-    "description": "Non-destructive raster layer compositing engine",
+    "blender": (4, 0, 0),
+    "location": "View3D > Sidebar > Paint Layers",
+    "description": "Non-destructive layer system for hand-painting and rotoscoping",
     "category": "Paint",
 }
 
 import bpy
-from . import properties
-from . import operators
-from . import ui
+from . import properties, engine, operators, ui
 
 def register():
     properties.register()

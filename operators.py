@@ -4,7 +4,7 @@ from .engine import rebuild_node_tree
 class RASTER_OT_create_canvas(bpy.types.Operator):
     bl_idname = "raster.create_canvas"
     bl_label = "Create Canvas"
-    bl_description = "Crea un piano pronto per la pittura"
+    bl_description = "Creates a plane ready for painting"
 
     def execute(self, context):
         bpy.ops.mesh.primitive_plane_add(size=2, enter_editmode=False, align='WORLD')
@@ -14,7 +14,6 @@ class RASTER_OT_create_canvas(bpy.types.Operator):
         mat.use_nodes = True
         obj.data.materials.append(mat)
         
-        # Pulisce i layer vecchi e ne crea uno di base
         obj.raster_layers.clear()
         base_layer = obj.raster_layers.add()
         base_layer.name = "Background"
@@ -60,7 +59,6 @@ class RASTER_OT_move_layer(bpy.types.Operator):
         
         if 0 <= new_index < len(obj.raster_layers):
             obj.raster_layers.move(self.index, new_index)
-            # Mantieni il focus sul layer spostato se era attivo
             if obj.raster_active_index == self.index:
                 obj.raster_active_index = new_index
             elif obj.raster_active_index == new_index:
@@ -85,7 +83,6 @@ class RASTER_OT_duplicate_layer(bpy.types.Operator):
         new_layer.is_visible = src_layer.is_visible
         new_layer.opacity = src_layer.opacity
         new_layer.blend_type = src_layer.blend_type
-        # Lasciamo group_name e maschera vuoti per generarli in modo indipendente
         
         new_index = self.index + 1
         layers.move(len(layers) - 1, new_index)
@@ -96,7 +93,7 @@ class RASTER_OT_duplicate_layer(bpy.types.Operator):
 class RASTER_OT_sync_layers(bpy.types.Operator):
     bl_idname = "raster.sync_layers"
     bl_label = "Apply Changes"
-    bl_description = "Forza l'aggiornamento dei nodi (utile per l'opacità)"
+    bl_description = "Force node tree update (useful for opacity)"
 
     def execute(self, context):
         rebuild_node_tree(context.active_object)
@@ -105,7 +102,7 @@ class RASTER_OT_sync_layers(bpy.types.Operator):
 class RASTER_OT_merge_visible(bpy.types.Operator):
     bl_idname = "raster.merge_visible"
     bl_label = "Merge Visible"
-    bl_description = "Bake dei layer visibili in una nuova immagine"
+    bl_description = "Bake visible layers into a new image"
     bl_options = {'REGISTER', 'UNDO'}
 
     resolution: bpy.props.IntProperty(name="Resolution", default=1024, min=256, max=4096)
@@ -175,6 +172,7 @@ class RASTER_OT_merge_visible(bpy.types.Operator):
 class RASTER_OT_set_active_layer(bpy.types.Operator):
     bl_idname = "raster.set_active_layer"
     bl_label = "Set Active Layer"
+    bl_description = "Select this layer to paint on it"
     index: bpy.props.IntProperty()
     is_mask: bpy.props.BoolProperty(default=False)
 
@@ -188,6 +186,7 @@ class RASTER_OT_set_active_layer(bpy.types.Operator):
 class RASTER_OT_create_mask(bpy.types.Operator):
     bl_idname = "raster.create_mask"
     bl_label = "Create Mask"
+    bl_description = "Adds a white mask to the layer"
     index: bpy.props.IntProperty()
 
     def execute(self, context):

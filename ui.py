@@ -26,7 +26,6 @@ class VIEW3D_PT_raster_layers(bpy.types.Panel):
             
             row = box.row(align=True)
             
-            # Pennello per IMMAGINE PRINCIPALE
             is_active_main = (obj.raster_active_index == i and not obj.raster_active_is_mask)
             paint_icon = 'BRUSH_DATA' if is_active_main else 'RADIOBUT_OFF'
             btn_main = row.operator("raster.set_active_layer", text="", icon=paint_icon, depress=is_active_main)
@@ -38,28 +37,14 @@ class VIEW3D_PT_raster_layers(bpy.types.Panel):
             
             row.prop(layer, "name", text="")
             
-            up_btn = row.operator("raster.move_layer", text="", icon='TRIA_UP')
-            up_btn.direction = 'DOWN'
-            up_btn.index = i
-            
-            dn_btn = row.operator("raster.move_layer", text="", icon='TRIA_DOWN')
-            dn_btn.direction = 'UP'
-            dn_btn.index = i
-            
-            dup_btn = row.operator("raster.duplicate_layer", text="", icon='COPYDOWN')
-            dup_btn.index = i
-            
-            rm_btn = row.operator("raster.remove_layer", text="", icon='X')
-            rm_btn.index = i
+            up_btn = row.operator("raster.move_layer", text="", icon='TRIA_UP'); up_btn.direction = 'DOWN'; up_btn.index = i
+            dn_btn = row.operator("raster.move_layer", text="", icon='TRIA_DOWN'); dn_btn.direction = 'UP'; dn_btn.index = i
+            dup_btn = row.operator("raster.duplicate_layer", text="", icon='COPYDOWN'); dup_btn.index = i
+            rm_btn = row.operator("raster.remove_layer", text="", icon='X'); rm_btn.index = i
 
-            # --- MODIFICA CRITICA QUI ---
-            # Ora mostra la Cartella per esplorare il disco e caricare Video/Immagini
             box.template_ID(layer, "image", new="image.new", open="image.open")
-            # ---------------------------
 
-            # SEZIONE MASCHERA
             mask_row = box.row(align=True)
-            
             if layer.mask_image:
                 is_active_mask = (obj.raster_active_index == i and obj.raster_active_is_mask)
                 mask_icon = 'BRUSH_DATA' if is_active_mask else 'RADIOBUT_OFF'
@@ -68,8 +53,6 @@ class VIEW3D_PT_raster_layers(bpy.types.Panel):
                 btn_mask.is_mask = True
                 
                 mask_row.prop(layer, "use_mask", text="", icon='MOD_MASK')
-                
-                # --- MODIFICA CRITICA ANCHE PER LA MASCHERA ---
                 mask_row.template_ID(layer, "mask_image", new="image.new", open="image.open")
                 
                 rm_mask_btn = mask_row.operator("raster.remove_mask", text="", icon='X')
@@ -90,11 +73,9 @@ class VIEW3D_PT_raster_layers(bpy.types.Panel):
         row.operator("raster.sync_layers", icon='FILE_REFRESH', text="Apply Opacity")
         row.operator("raster.merge_visible", icon='IMAGE_BACKGROUND', text="Merge")
 
-        # STRUMENTI PENNELLO AVANZATI
         if context.mode == 'PAINT_TEXTURE':
             layout.separator()
             layout.label(text="Paint Settings", icon='TOOL_SETTINGS')
-            
             settings = context.tool_settings.image_paint
             layout.template_ID(settings, "brush", new="brush.add")
             
@@ -102,7 +83,6 @@ class VIEW3D_PT_raster_layers(bpy.types.Panel):
             if brush:
                 box = layout.box()
                 col = box.column(align=True)
-                
                 col.prop(brush, "color", text="Color")
                 col.separator()
                 col.prop(brush, "size", text="Radius")
