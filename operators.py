@@ -221,6 +221,54 @@ class RASTER_OT_remove_mask(bpy.types.Operator):
         rebuild_node_tree(obj)
         return {'FINISHED'}
 
+# --- NUOVO OPERATORE PER LA TELECAMERA ---
+class RASTER_OT_setup_camera(bpy.types.Operator):
+    bl_idname = "raster.setup_camera"
+    bl_label = "Frame Camera"
+    bl_description = "Frames the canvas with an Orthographic camera and adjusts render resolution"
+
+    def execute(self, context):
+        obj = context.active_object
+        if not obj:
+            self.report({'WARNING'}, "Select the Canvas first.")
+            return {'CANCELLED'}
+
+        # Cerca una telecamera o ne crea una nuova
+        cam_obj = next((ob for ob in context.scene.objects if ob.type == 'CAMERA'), None)
+        if not cam_obj:
+            cam_data = bpy.data.cameras.new("Canvas_Camera")
+            cam_obj = bpy.data.objects.new("Canvas_Camera", cam_data)
+            context.collection.objects.link(cam_obj)
+        
+        # Imposta come telecamera attiva della scena
+        context.scene.camera = cam_obj
+
+        # Posiziona la telecamera esattamente sopra il Canvas (assumendo che sia sul piano XY)
+        cam_obj.location = (obj.location.x, obj.location.y, obj.location.z + 5.0)
+        # La fa puntare verso il basso (-Z)
+        cam_obj.rotation_euler = (0.0, 0.0, 0.0)
+        
+        # Imposta la telecamera in modalità Ortografica
+        cam_obj.data.type = 'ORTHO'
+        
+        # Calcola la scala ortografica per abbracciare tutto il piano
+        max_dim = max(obj.dimensions.x, obj.dimensions.y)
+        cam_obj.data.ortho_scale = max_dim
+
+        # Adatta l'Aspect Ratio del Render alla forma del Canvas
+        render = context.scene.render
+        if obj.dimensions.y > 0 and obj.dimensions.x > 0:
+            ratio = obj.dimensions.x / obj.dimensions.y
+            if ratio >= 1:
+                render.resolution_x = 1920
+                render.resolution_y = int(1920 / ratio)
+            else:
+                render.resolution_y = 1920
+                render.resolution_x = int(1920 * ratio)
+
+        self.report({'INFO'}, "Camera framed perfectly!")
+        return {'FINISHED'}
+
 classes = (
     RASTER_OT_create_canvas,
     RASTER_OT_add_layer,
@@ -231,7 +279,8 @@ classes = (
     RASTER_OT_merge_visible,
     RASTER_OT_set_active_layer,
     RASTER_OT_create_mask,
-    RASTER_OT_remove_mask
+    RASTER_OT_remove_mask,
+    RASTER_OT_setup_camera # Aggiunto qui
 )
 
 def register():

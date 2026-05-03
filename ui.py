@@ -68,10 +68,16 @@ class VIEW3D_PT_raster_layers(bpy.types.Panel):
                 col.prop(layer, "opacity", slider=True)
 
         layout.separator()
-        row = layout.row(align=True)
-        row.scale_y = 1.5 
-        row.operator("raster.sync_layers", icon='FILE_REFRESH', text="Apply Opacity")
+        
+        # --- BLOCCO PULSANTI UTILITY AGGIORNATO ---
+        box_utils = layout.box()
+        col = box_utils.column(align=True)
+        col.scale_y = 1.2
+        col.operator("raster.sync_layers", icon='FILE_REFRESH', text="Apply Opacity")
+        
+        row = col.row(align=True)
         row.operator("raster.merge_visible", icon='IMAGE_BACKGROUND', text="Merge")
+        row.operator("raster.setup_camera", icon='OUTLINER_OB_CAMERA', text="Frame Camera") # <-- NUOVO PULSANTE QUI
 
         if context.mode == 'PAINT_TEXTURE':
             layout.separator()
