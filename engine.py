@@ -273,12 +273,16 @@ class NodeTreeManager:
                 mix_node.location = (start_x + (placed * NODE_HORIZONTAL_SPACING),
                                      start_y - (placed * NODE_VERTICAL_SPACING))
 
-                # Wire mix node
+                # Wire mix node.
+                # Fix X: access ShaderNodeMix sockets by documented name
+                # instead of numeric index. Indices 6, 7, 2 are correct for
+                # RGBA mode in Blender 4.x but are undocumented and could
+                # silently break if Blender adds or reorders sockets.
                 try:
-                    links.new(previous_output, mix_node.inputs[6])
-                    links.new(group_node.outputs[SOCKET_COLOR_OUTPUT], mix_node.inputs[7])
+                    links.new(previous_output, mix_node.inputs['A'])
+                    links.new(group_node.outputs[SOCKET_COLOR_OUTPUT], mix_node.inputs['B'])
                     links.new(group_node.outputs[SOCKET_FACTOR_OUTPUT], mix_node.inputs['Factor'])
-                    previous_output = mix_node.outputs[2]
+                    previous_output = mix_node.outputs['Result']
                 except Exception as e:
                     logger.error(f"Failed to wire mix node at position {placed}: {e}")
 

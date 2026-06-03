@@ -48,6 +48,7 @@ DEFAULT_MATERIAL_NAME = "CanvasMaterial"
 DEFAULT_CAMERA_NAME = "Canvas_Camera"
 DEFAULT_CAMERA_HEIGHT = 5.0
 DEFAULT_CAMERA_TYPE = "ORTHO"  # replaces inline 'ORTHO' literal
+OBJECT_TYPE_CAMERA = "CAMERA"  # Fix W: replaces inline 'CAMERA' literal in operator
 DEFAULT_RENDER_RESOLUTION = 1920
 
 # Image generation settings

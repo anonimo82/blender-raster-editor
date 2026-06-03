@@ -165,17 +165,23 @@ class RASTER_OT_remove_layer(BaseOperator):
             if not (0 <= self.index < len(obj.raster_layers)):
                 raise RuntimeError(f"Invalid layer index: {self.index}")
 
+            # Fix V: capture active_index BEFORE remove() so that the
+            # is_mask reset below compares against the original active
+            # layer, not the post-clamp value. Without this, deleting a
+            # non-active layer whose index coincidentally matches the
+            # clamped active_index would incorrectly reset is_mask on
+            # the surviving active layer (regression introduced by Fix T).
+            was_active_index = obj.raster_active_index
+
             obj.raster_layers.remove(self.index)
 
             # Update active index
             if obj.raster_active_index >= len(obj.raster_layers):
                 obj.raster_active_index = max(0, len(obj.raster_layers) - 1)
 
-            # Fix T: if the deleted layer was the active paint target, reset
-            # raster_active_is_mask so the new active layer doesn't inherit a
-            # stale mask-painting state that could confuse future extensions.
-            if self.index == obj.raster_active_index or \
-               obj.raster_active_index >= len(obj.raster_layers):
+            # Fix T (corrected by Fix V): reset is_mask only when the
+            # deleted layer was actually the active paint target.
+            if self.index == was_active_index:
                 obj.raster_active_is_mask = False
 
             rebuild_node_tree(obj)
@@ -659,7 +665,7 @@ class RASTER_OT_setup_camera(BaseOperator):
 
             # Find or create camera
             cam_obj = next(
-                (ob for ob in context.scene.objects if ob.type == 'CAMERA'),
+                (ob for ob in context.scene.objects if ob.type == OBJECT_TYPE_CAMERA),
                 None
             )
             if not cam_obj:
