@@ -517,10 +517,33 @@ class RASTER_OT_resize_canvas(BaseOperator):
             # False return from rebuild_node_tree() at the end.
             self._validate_active_material(obj)
 
+            # Fix Z: track per-layer resize failures so the user is warned
+            # if any layer silently fell back to its original image.
+            resize_failures = []
+
             # Resize all layer images
             for layer in obj.raster_layers:
-                layer.image = self._resize_image_canvas(layer.image, self.new_width, self.new_height)
-                layer.mask_image = self._resize_image_canvas(layer.mask_image, self.new_width, self.new_height)
+                new_img = self._resize_image_canvas(layer.image, self.new_width, self.new_height)
+                if new_img is layer.image and layer.image is not None and \
+                   layer.image.source not in {IMAGE_SOURCE_MOVIE, IMAGE_SOURCE_SEQUENCE} and \
+                   (layer.image.size[0] != self.new_width or layer.image.size[1] != self.new_height):
+                    resize_failures.append(layer.name)
+                else:
+                    layer.image = new_img
+
+                new_mask = self._resize_image_canvas(layer.mask_image, self.new_width, self.new_height)
+                if new_mask is layer.mask_image and layer.mask_image is not None and \
+                   layer.mask_image.source not in {IMAGE_SOURCE_MOVIE, IMAGE_SOURCE_SEQUENCE} and \
+                   (layer.mask_image.size[0] != self.new_width or layer.mask_image.size[1] != self.new_height):
+                    resize_failures.append(f'{layer.name} (mask)')
+                else:
+                    layer.mask_image = new_mask
+
+            if resize_failures:
+                self._report_warning(
+                    f"Resize failed for: {', '.join(resize_failures)}. "
+                    "Other layers were resized successfully."
+                )
 
             # Adjust object dimensions to match aspect ratio
             if self.new_width > 0 and self.new_height > 0:
@@ -534,7 +557,8 @@ class RASTER_OT_resize_canvas(BaseOperator):
                     obj.dimensions.x = max_dim * ratio
 
             rebuild_node_tree(obj)
-            self._report_info(INFO_CANVAS_RESIZED)
+            if not resize_failures:
+                self._report_info(INFO_CANVAS_RESIZED)
             return {'FINISHED'}
         except RuntimeError as e:
             self._report_error(str(e))

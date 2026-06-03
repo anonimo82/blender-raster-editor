@@ -33,6 +33,12 @@ def _find_owner_object(layer_item: 'RasterLayerItem') -> 'Optional[bpy.types.Obj
     # bpy.data.objects, which includes objects from ALL scenes and linked
     # libraries. Using bpy.data.objects could return an object from a different
     # scene, causing rebuild_node_tree() to operate on the wrong canvas.
+    #
+    # Fix Y: guard against bpy.context.scene being None, which can happen in
+    # headless / background-render mode or certain scripting contexts.
+    if bpy.context.scene is None:
+        logger.warning("_find_owner_object: bpy.context.scene is None; cannot scan objects")
+        return None
     for obj in bpy.context.scene.objects:
         if not hasattr(obj, "raster_layers"):
             continue
