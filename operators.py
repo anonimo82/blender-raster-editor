@@ -247,6 +247,11 @@ class RASTER_OT_duplicate_layer(BaseOperator):
             new_layer.opacity = src_layer.opacity
             new_layer.blend_type = src_layer.blend_type
             new_layer.use_mask = src_layer.use_mask
+            # Fix E: explicitly clear group_name so create_or_update_layer_group()
+            # always creates a fresh, independent NodeGroup for the duplicate.
+            # Sharing group_name with the source would cause both layers to
+            # mutate the same node group, corrupting each other's state.
+            new_layer.group_name = ""
 
             # Move to position after source
             new_index = self.index + 1
@@ -575,16 +580,20 @@ class RASTER_OT_merge_visible(BaseOperator):
                 bake_node.select = True
                 nodes.active = bake_node
 
-                # Setup object for baking
-                bpy.ops.object.select_all(action='DESELECT')
-                obj.select_set(True)
-                context.view_layer.objects.active = obj
+                try:
+                    # Setup object for baking
+                    bpy.ops.object.select_all(action='DESELECT')
+                    obj.select_set(True)
+                    context.view_layer.objects.active = obj
 
-                # Perform bake
-                bpy.ops.object.bake(type=BAKE_TYPE, save_mode='INTERNAL')
-
-                # Cleanup bake node
-                nodes.remove(bake_node)
+                    # Perform bake
+                    bpy.ops.object.bake(type=BAKE_TYPE, save_mode='INTERNAL')
+                finally:
+                    # Fix D: always remove the bake node, even if bake() raises
+                    # an exception (e.g. Cycles unavailable, missing UVs).
+                    # Without this the temporary node corrupts the tree permanently.
+                    if bake_node and bake_node.name in nodes:
+                        nodes.remove(bake_node)
 
                 # Hide original layers
                 for layer in visible_layers:

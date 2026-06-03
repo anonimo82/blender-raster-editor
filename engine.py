@@ -28,11 +28,11 @@ class NodeTreeManager:
         Returns:
             Principled BSDF node if found, None otherwise
         """
-        try:
-            return next((n for n in nodes if n.type == SHADER_TYPE_PRINCIPLED), None)
-        except StopIteration:
+        # next() with a default never raises StopIteration, so no try/except needed.
+        result = next((n for n in nodes if n.type == SHADER_TYPE_PRINCIPLED), None)
+        if result is None:
             logger.warning(WARNING_NO_PRINCIPLED)
-            return None
+        return result
 
     @staticmethod
     def clear_manager_frame(nodes: bpy.types.Nodes) -> bpy.types.Node:
@@ -48,10 +48,22 @@ class NodeTreeManager:
         manager_frame = nodes.get(NODE_FRAME_NAME)
 
         if manager_frame:
-            # Remove all children
+            # Collect orphan node groups before removing child nodes
+            orphan_groups = [
+                n.node_tree for n in nodes
+                if n.parent == manager_frame
+                and n.type == SHADER_TYPE_GROUP
+                and getattr(n, "node_tree", None) is not None
+            ]
             child_nodes = [n for n in nodes if n.parent == manager_frame]
             for node in child_nodes:
                 nodes.remove(node)
+            # Fix B: purge node groups that are now unreferenced (users == 0)
+            # to avoid accumulating orphan data-blocks during a session.
+            for ng in orphan_groups:
+                if ng.users == 0:
+                    bpy.data.node_groups.remove(ng)
+                    logger.debug(f"Purged orphan node group: {ng.name}")
         else:
             # Create new frame
             manager_frame = nodes.new('NodeFrame')
@@ -231,6 +243,7 @@ class NodeTreeManager:
             # Create or update layer group
             ng = NodeTreeManager.create_or_update_layer_group(layer)
             if not ng:
+                logger.warning(f"Skipping layer '{layer.name}': node group could not be created or retrieved")
                 continue
 
             NodeTreeManager.update_layer_group(ng, layer)
@@ -261,6 +274,8 @@ class NodeTreeManager:
                 except Exception as e:
                     logger.error(f"Failed to wire mix node at index {index}: {e}")
 
+        if previous_output is None:
+            logger.warning("build_composition_chain: all layer node groups failed; no output produced")
         return previous_output
 
     @staticmethod

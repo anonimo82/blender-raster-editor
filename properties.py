@@ -18,7 +18,7 @@ def _auto_update_tree(self: 'RasterLayerItem', context: bpy.types.Context) -> No
     """
     Callback function triggered when layer properties change.
     Updates the shader node tree and handles canvas aspect ratio.
-    
+
     Args:
         self: The layer being modified
         context: The Blender context
@@ -28,23 +28,30 @@ def _auto_update_tree(self: 'RasterLayerItem', context: bpy.types.Context) -> No
 
     obj: Object = context.active_object
 
-    # Auto-adjust canvas aspect ratio when loading image on background layer
+    # Auto-adjust canvas aspect ratio when loading image on background layer.
+    # Fix F: use obj.dimensions instead of obj.scale so that the canvas size
+    # in world-space is adjusted correctly regardless of any prior scale
+    # applied to the object. obj.scale would compound with the existing scale
+    # and produce wrong proportions on non-unit canvases.
     try:
-        if (len(obj.raster_layers) > 0 
-            and self == obj.raster_layers[0]
-            and self.image 
-            and self.image.size[0] > 0 
-            and self.image.size[1] > 0):
-            
+        if (len(obj.raster_layers) > 0
+                and self == obj.raster_layers[0]
+                and self.image
+                and self.image.size[0] > 0
+                and self.image.size[1] > 0):
+
             w, h = self.image.size
+            # Keep the longer axis at its current world-space size and shrink
+            # the shorter axis proportionally, without touching obj.scale.
+            max_dim = max(obj.dimensions.x, obj.dimensions.y)
             if w >= h:
-                obj.scale.x = w / h
-                obj.scale.y = 1.0
+                obj.dimensions.x = max_dim
+                obj.dimensions.y = max_dim * (h / w)
             else:
-                obj.scale.x = 1.0
-                obj.scale.y = h / w
-                
-            logger.debug(f"Auto-adjusted canvas aspect ratio to {w}x{h}")
+                obj.dimensions.y = max_dim
+                obj.dimensions.x = max_dim * (w / h)
+
+            logger.debug(f"Auto-adjusted canvas dimensions to match {w}x{h} image")
     except Exception as e:
         logger.warning(f"Failed to auto-adjust canvas aspect: {e}")
 
@@ -59,7 +66,7 @@ def _auto_update_tree(self: 'RasterLayerItem', context: bpy.types.Context) -> No
 class RasterLayerItem(PropertyGroup):
     """
     Represents a single layer in the raster layer system.
-    
+
     Properties:
         name: User-readable layer name
         image: The main texture image for this layer
@@ -70,7 +77,7 @@ class RasterLayerItem(PropertyGroup):
         opacity: Layer opacity (0.0 - 1.0)
         group_name: Internal node group identifier
     """
-    
+
     name: bpy.props.StringProperty(
         name="Name",
         description="Layer name",
@@ -151,7 +158,7 @@ class RasterLayerItem(PropertyGroup):
     def validate(self) -> bool:
         """
         Validate layer properties for consistency.
-        
+
         Returns:
             True if layer is valid, False otherwise
         """
@@ -160,17 +167,17 @@ class RasterLayerItem(PropertyGroup):
             if self.group_name and self.group_name not in bpy.data.node_groups:
                 logger.warning(f"Layer '{self.name}' references missing node group '{self.group_name}'")
                 return False
-            
+
             # Check image validity
             if self.image and self.image.users == 0:
                 logger.warning(f"Layer '{self.name}' has orphaned image reference")
                 return False
-            
+
             # Check mask validity
             if self.mask_image and self.mask_image.users == 0:
                 logger.warning(f"Layer '{self.name}' has orphaned mask image reference")
                 return False
-            
+
             return True
         except Exception as e:
             logger.error(f"Error validating layer '{self.name}': {e}")
