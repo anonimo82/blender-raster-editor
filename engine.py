@@ -4,7 +4,7 @@ Handles shader graph construction, layer composition, and node synchronization.
 """
 
 import logging
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 import bpy
 from bpy.types import Object, Material, ShaderNodeTree, Node, ShaderNode
@@ -238,8 +238,12 @@ class NodeTreeManager:
 
         previous_output = None
         start_x, start_y = NODE_START_X, NODE_START_Y
+        # Fix G: use a dedicated placement counter instead of the enumerate index.
+        # If a layer is skipped (ng is None), the counter is NOT incremented, so
+        # placed nodes stay evenly spaced with no visual gaps in the Shader Editor.
+        placed = 0
 
-        for index, layer in enumerate(visible_layers):
+        for layer in visible_layers:
             # Create or update layer group
             ng = NodeTreeManager.create_or_update_layer_group(layer)
             if not ng:
@@ -252,9 +256,9 @@ class NodeTreeManager:
             group_node = nodes.new(SHADER_TYPE_GROUP)
             group_node.node_tree = ng
             group_node.parent = manager_frame
-            group_node.location = (start_x, start_y - (index * NODE_VERTICAL_SPACING))
+            group_node.location = (start_x, start_y - (placed * NODE_VERTICAL_SPACING))
 
-            if index == 0:
+            if placed == 0:
                 previous_output = group_node.outputs[SOCKET_COLOR_OUTPUT]
             else:
                 # Create mix node
@@ -262,8 +266,8 @@ class NodeTreeManager:
                 mix_node.data_type = 'RGBA'
                 mix_node.blend_type = layer.blend_type
                 mix_node.parent = manager_frame
-                mix_node.location = (start_x + (index * NODE_HORIZONTAL_SPACING),
-                                     start_y - (index * NODE_VERTICAL_SPACING))
+                mix_node.location = (start_x + (placed * NODE_HORIZONTAL_SPACING),
+                                     start_y - (placed * NODE_VERTICAL_SPACING))
 
                 # Wire mix node
                 try:
@@ -272,7 +276,9 @@ class NodeTreeManager:
                     links.new(group_node.outputs[SOCKET_FACTOR_OUTPUT], mix_node.inputs['Factor'])
                     previous_output = mix_node.outputs[2]
                 except Exception as e:
-                    logger.error(f"Failed to wire mix node at index {index}: {e}")
+                    logger.error(f"Failed to wire mix node at position {placed}: {e}")
+
+            placed += 1
 
         if previous_output is None:
             logger.warning("build_composition_chain: all layer node groups failed; no output produced")

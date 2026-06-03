@@ -14,6 +14,30 @@ from .constants import *
 logger = logging.getLogger(__name__)
 
 
+def _find_owner_object(layer_item: 'RasterLayerItem') -> 'Optional[bpy.types.Object]':
+    """
+    Find the scene object that owns a given RasterLayerItem.
+
+    Fix H: using context.active_object is unreliable in multi-canvas scenes
+    because the active object may differ from the one whose layer triggered the
+    callback (e.g. when properties are changed via script while a different
+    object is selected). Scanning scene objects is the only safe approach.
+
+    Args:
+        layer_item: The layer whose owner we need to locate.
+
+    Returns:
+        The owning Object, or None if not found.
+    """
+    for obj in bpy.data.objects:
+        if not hasattr(obj, "raster_layers"):
+            continue
+        for layer in obj.raster_layers:
+            if layer == layer_item:
+                return obj
+    return None
+
+
 def _auto_update_tree(self: 'RasterLayerItem', context: bpy.types.Context) -> None:
     """
     Callback function triggered when layer properties change.
@@ -23,10 +47,13 @@ def _auto_update_tree(self: 'RasterLayerItem', context: bpy.types.Context) -> No
         self: The layer being modified
         context: The Blender context
     """
-    if not context.active_object:
+    # Fix H: resolve the owning object by identity scan rather than relying on
+    # context.active_object, which may point to a different object in scenes
+    # with multiple canvases or when properties are mutated via script.
+    obj = _find_owner_object(self)
+    if obj is None:
+        logger.warning("_auto_update_tree: could not find owner object for layer; skipping rebuild")
         return
-
-    obj: Object = context.active_object
 
     # Auto-adjust canvas aspect ratio when loading image on background layer.
     # Fix F: use obj.dimensions instead of obj.scale so that the canvas size

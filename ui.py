@@ -4,7 +4,6 @@ Defines the viewport sidebar panel with layer management controls.
 """
 
 import logging
-from typing import Optional
 
 import bpy
 from bpy.types import Panel, UILayout, Object

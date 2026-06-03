@@ -4,7 +4,7 @@ Handles all user-triggered actions: layer management, baking, canvas setup, etc.
 """
 
 import logging
-from typing import Set
+from typing import Optional
 
 import numpy as np
 import bpy
@@ -88,6 +88,16 @@ class RASTER_OT_create_canvas(BaseOperator):
             )
             obj = context.active_object
             obj.name = DEFAULT_CANVAS_NAME
+            if obj.name != DEFAULT_CANVAS_NAME:
+                # Fix J: Blender silently renamed the object because DEFAULT_CANVAS_NAME
+                # was already in use. Warn the user so they are not confused.
+                logger.warning(
+                    f"An object named '{DEFAULT_CANVAS_NAME}' already exists in the scene. "
+                    f"New canvas was created as '{obj.name}'."
+                )
+                self._report_warning(
+                    f"'{DEFAULT_CANVAS_NAME}' already exists — new canvas created as '{obj.name}'"
+                )
 
             # Create material
             mat = bpy.data.materials.new(name=DEFAULT_MATERIAL_NAME)
@@ -551,13 +561,18 @@ class RASTER_OT_merge_visible(BaseOperator):
             obj = self._validate_active_object(context)
             self._validate_active_material(obj)
 
-            rebuild_node_tree(obj)
-            mat = obj.active_material
-            nodes = mat.node_tree.nodes
+            # Fix I: compute visible_layers before the initial rebuild so the
+            # same snapshot is used both for the minimum-layer check and later
+            # for hiding originals — avoiding any inconsistency if a property
+            # callback were to mutate the layer list during rebuild.
             visible_layers = [l for l in obj.raster_layers if l.is_visible]
 
             if len(visible_layers) < MIN_VISIBLE_LAYERS_FOR_MERGE:
                 raise RuntimeError(ERROR_INSUFFICIENT_LAYERS)
+
+            rebuild_node_tree(obj)
+            mat = obj.active_material
+            nodes = mat.node_tree.nodes
 
             # Save original state
             orig_engine = context.scene.render.engine
