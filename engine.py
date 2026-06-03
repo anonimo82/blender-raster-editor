@@ -70,7 +70,7 @@ class NodeTreeManager:
                     logger.debug(f"Purged orphan node group: {ng.name}")
         else:
             # Create new frame
-            manager_frame = nodes.new('NodeFrame')
+            manager_frame = nodes.new(NODE_TYPE_FRAME)
             manager_frame.name = NODE_FRAME_NAME
             manager_frame.label = NODE_FRAME_LABEL
             manager_frame.label_size = NODE_FRAME_LABEL_SIZE
@@ -99,7 +99,7 @@ class NodeTreeManager:
         try:
             ng = bpy.data.node_groups.new(
                 name=f"Group_{layer.name}",
-                type='ShaderNodeTree'
+                type=NODE_TYPE_GROUP_TREE
             )
             ng.interface.new_socket(
                 name=SOCKET_COLOR_OUTPUT,
@@ -132,19 +132,19 @@ class NodeTreeManager:
         links = ng.links
 
         # Create main texture node
-        t_main = nodes.new('ShaderNodeTexImage')
+        t_main = nodes.new(NODE_TYPE_TEX_IMAGE)
         t_main.name = TEXTURE_NODE_NAME
         t_main.location = (INTERNAL_MAIN_TEXTURE_X, INTERNAL_MAIN_TEXTURE_Y)
 
         # Create mask texture node
-        t_mask = nodes.new('ShaderNodeTexImage')
+        t_mask = nodes.new(NODE_TYPE_TEX_IMAGE)
         t_mask.name = MASK_NODE_NAME
         t_mask.location = (INTERNAL_MASK_TEXTURE_X, INTERNAL_MASK_TEXTURE_Y)
 
         # Create opacity math node
-        math = nodes.new('ShaderNodeMath')
+        math = nodes.new(NODE_TYPE_MATH)
         math.name = OPACITY_MATH_NODE_NAME
-        math.operation = 'MULTIPLY'
+        math.operation = SHADER_MATH_OPERATION_MULTIPLY
         math.location = (INTERNAL_MATH_NODE_X, INTERNAL_MATH_NODE_Y)
 
         # FIX #4: initialise both inputs so new layers are fully opaque by
@@ -153,7 +153,7 @@ class NodeTreeManager:
         math.inputs[1].default_value = 1.0  # opacity default
 
         # Create output node
-        out = nodes.new('NodeGroupOutput')
+        out = nodes.new(NODE_TYPE_GROUP_OUTPUT)
         out.location = (INTERNAL_OUTPUT_NODE_X, INTERNAL_OUTPUT_NODE_Y)
 
         # Wire outputs
@@ -266,8 +266,8 @@ class NodeTreeManager:
                 previous_output = group_node.outputs[SOCKET_COLOR_OUTPUT]
             else:
                 # Create mix node
-                mix_node = nodes.new('ShaderNodeMix')
-                mix_node.data_type = 'RGBA'
+                mix_node = nodes.new(NODE_TYPE_MIX)
+                mix_node.data_type = SHADER_MIX_DATA_TYPE_RGBA
                 mix_node.blend_type = layer.blend_type
                 mix_node.parent = manager_frame
                 mix_node.location = (start_x + (placed * NODE_HORIZONTAL_SPACING),
@@ -337,7 +337,7 @@ class NodeTreeManager:
 
                     if not target_node:
                         target_node = next(
-                            (n for n in ng.nodes if n.type == 'TEX_IMAGE'),
+                            (n for n in ng.nodes if n.type == SHADER_NODE_TEX_IMAGE_TYPE),
                             None
                         )
 
@@ -397,11 +397,14 @@ def rebuild_node_tree(obj: Object) -> bool:
             obj, visible_layers, nodes, links, manager_frame
         )
 
+        # Fix Q: always clear the existing Base Color link, regardless of
+        # whether final_output is valid. If final_output is None (all node
+        # groups failed) the stale link would otherwise keep showing the last
+        # rendered result with no visual feedback that something went wrong.
+        for link in list(principled.inputs['Base Color'].links):
+            links.remove(link)
+
         if final_output:
-            # Clear existing connections
-            for link in list(principled.inputs['Base Color'].links):
-                links.remove(link)
-            # Wire final output
             links.new(final_output, principled.inputs['Base Color'])
 
         # Update active layer selection

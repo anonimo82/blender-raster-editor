@@ -171,6 +171,13 @@ class RASTER_OT_remove_layer(BaseOperator):
             if obj.raster_active_index >= len(obj.raster_layers):
                 obj.raster_active_index = max(0, len(obj.raster_layers) - 1)
 
+            # Fix T: if the deleted layer was the active paint target, reset
+            # raster_active_is_mask so the new active layer doesn't inherit a
+            # stale mask-painting state that could confuse future extensions.
+            if self.index == obj.raster_active_index or \
+               obj.raster_active_index >= len(obj.raster_layers):
+                obj.raster_active_is_mask = False
+
             rebuild_node_tree(obj)
             return {'FINISHED'}
         except RuntimeError as e:
@@ -590,7 +597,7 @@ class RASTER_OT_merge_visible(BaseOperator):
                 )
 
                 # Create bake node
-                bake_node = nodes.new('ShaderNodeTexImage')
+                bake_node = nodes.new(NODE_TYPE_TEX_IMAGE)
                 bake_node.image = merged_img
                 bake_node.select = True
                 nodes.active = bake_node
@@ -671,8 +678,15 @@ class RASTER_OT_setup_camera(BaseOperator):
             cam_obj.rotation_euler = (0.0, 0.0, 0.0)
 
             # Setup orthographic view
-            cam_obj.data.type = 'ORTHO'
+            cam_obj.data.type = DEFAULT_CAMERA_TYPE
             max_dim = max(obj.dimensions.x, obj.dimensions.y)
+            # Fix R: guard against a zero-dimension object (e.g. fresh mesh
+            # with zeroed scale). ortho_scale=0 makes the entire scene
+            # invisible in the camera viewport without any error.
+            if max_dim <= 0.0:
+                raise RuntimeError(
+                    "Canvas has zero dimensions — apply scale (Ctrl+A) before framing the camera."
+                )
             cam_obj.data.ortho_scale = max_dim
 
             # Set render resolution based on aspect ratio

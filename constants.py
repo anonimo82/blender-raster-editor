@@ -20,7 +20,17 @@ SOCKET_FACTOR_OUTPUT = "Factor"
 # Shader node types
 SHADER_TYPE_PRINCIPLED = "BSDF_PRINCIPLED"
 SHADER_TYPE_GROUP = "GROUP"
-SHADER_TYPE_MIX = "Mix"
+# nodes.new() identifiers
+NODE_TYPE_MIX = "ShaderNodeMix"
+NODE_TYPE_TEX_IMAGE = "ShaderNodeTexImage"
+NODE_TYPE_MATH = "ShaderNodeMath"
+NODE_TYPE_FRAME = "NodeFrame"
+NODE_TYPE_GROUP_OUTPUT = "NodeGroupOutput"
+NODE_TYPE_GROUP_TREE = "ShaderNodeTree"
+# n.type check value (different from nodes.new() key)
+SHADER_NODE_TEX_IMAGE_TYPE = "TEX_IMAGE"
+SHADER_MATH_OPERATION_MULTIPLY = "MULTIPLY"
+SHADER_MIX_DATA_TYPE_RGBA = "RGBA"
 
 # Image source types
 IMAGE_SOURCE_MOVIE = "MOVIE"
@@ -37,7 +47,7 @@ DEFAULT_MATERIAL_NAME = "CanvasMaterial"
 # Camera settings
 DEFAULT_CAMERA_NAME = "Canvas_Camera"
 DEFAULT_CAMERA_HEIGHT = 5.0
-DEFAULT_CAMERA_ORTHO = True
+DEFAULT_CAMERA_TYPE = "ORTHO"  # replaces inline 'ORTHO' literal
 DEFAULT_RENDER_RESOLUTION = 1920
 
 # Image generation settings
@@ -84,7 +94,6 @@ ERROR_BAKE_FAILED = "Baking operation failed."
 ERROR_INSUFFICIENT_LAYERS = "At least 2 visible layers are required to merge."
 
 # Warning messages
-WARNING_SELECT_CANVAS = "Please select the Canvas object first."
 WARNING_NO_PRINCIPLED = "Could not find Principled BSDF node."
 
 # Info messages

@@ -29,7 +29,11 @@ def _find_owner_object(layer_item: 'RasterLayerItem') -> 'Optional[bpy.types.Obj
     Returns:
         The owning Object, or None if not found.
     """
-    for obj in bpy.data.objects:
+    # Fix S: iterate bpy.context.scene.objects (current scene only) instead of
+    # bpy.data.objects, which includes objects from ALL scenes and linked
+    # libraries. Using bpy.data.objects could return an object from a different
+    # scene, causing rebuild_node_tree() to operate on the wrong canvas.
+    for obj in bpy.context.scene.objects:
         if not hasattr(obj, "raster_layers"):
             continue
         for layer in obj.raster_layers:
