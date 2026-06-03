@@ -21,10 +21,10 @@ class NodeTreeManager:
     def get_principled_bsdf(nodes: bpy.types.Nodes) -> Optional[ShaderNode]:
         """
         Find the Principled BSDF node in a node tree.
-        
+
         Args:
             nodes: Collection of nodes to search
-            
+
         Returns:
             Principled BSDF node if found, None otherwise
         """
@@ -38,15 +38,15 @@ class NodeTreeManager:
     def clear_manager_frame(nodes: bpy.types.Nodes) -> bpy.types.Node:
         """
         Clear or create the layer manager frame node.
-        
+
         Args:
             nodes: Collection of nodes to modify
-            
+
         Returns:
             The manager frame node
         """
         manager_frame = nodes.get(NODE_FRAME_NAME)
-        
+
         if manager_frame:
             # Remove all children
             child_nodes = [n for n in nodes if n.parent == manager_frame]
@@ -58,24 +58,25 @@ class NodeTreeManager:
             manager_frame.name = NODE_FRAME_NAME
             manager_frame.label = NODE_FRAME_LABEL
             manager_frame.label_size = NODE_FRAME_LABEL_SIZE
-        
+
         return manager_frame
 
     @staticmethod
     def create_or_update_layer_group(layer: 'RasterLayerItem') -> Optional[bpy.types.NodeTree]:
         """
         Create or update a node group for a layer.
-        
+
         Args:
             layer: The layer to create a group for
-            
+
         Returns:
             The node group, or None if creation failed
         """
-        # Check if group exists and is valid
+        # FIX #3: use the already-resolved `ng` variable in the inner check
+        # instead of re-fetching from bpy.data.node_groups a second time.
         if layer.group_name and layer.group_name in bpy.data.node_groups:
             ng = bpy.data.node_groups[layer.group_name]
-            if "Factor" in bpy.data.node_groups[layer.group_name].interface.items_tree:
+            if "Factor" in ng.interface.items_tree:
                 return ng
 
         # Create new node group
@@ -95,7 +96,7 @@ class NodeTreeManager:
                 socket_type='NodeSocketFloat'
             )
             layer.group_name = ng.name
-            
+
             NodeTreeManager._setup_layer_group_nodes(ng)
             logger.debug(f"Created node group: {ng.name}")
             return ng
@@ -107,7 +108,7 @@ class NodeTreeManager:
     def _setup_layer_group_nodes(ng: ShaderNodeTree) -> None:
         """
         Setup the internal nodes for a layer group.
-        
+
         Args:
             ng: The node group to populate
         """
@@ -130,6 +131,11 @@ class NodeTreeManager:
         math.operation = 'MULTIPLY'
         math.location = (INTERNAL_MATH_NODE_X, INTERNAL_MATH_NODE_Y)
 
+        # FIX #4: initialise both inputs so new layers are fully opaque by
+        # default, instead of leaving inputs[0] at 0.0 (fully transparent).
+        math.inputs[0].default_value = 1.0  # mask factor — no mask → fully opaque
+        math.inputs[1].default_value = 1.0  # opacity default
+
         # Create output node
         out = nodes.new('NodeGroupOutput')
         out.location = (INTERNAL_OUTPUT_NODE_X, INTERNAL_OUTPUT_NODE_Y)
@@ -142,7 +148,7 @@ class NodeTreeManager:
     def update_layer_group(ng: ShaderNodeTree, layer: 'RasterLayerItem') -> None:
         """
         Update layer group node properties and image references.
-        
+
         Args:
             ng: The node group to update
             layer: The layer providing updated data
@@ -170,21 +176,26 @@ class NodeTreeManager:
                     t_mask.image_user.use_auto_refresh = True
                     t_mask.image_user.frame_duration = layer.mask_image.frame_duration
 
-            # Update opacity and mask linkage
+            # FIX #1: split into two independent steps:
+            #   1. always clear existing links on inputs[0]
+            #   2. conditionally re-wire the mask or reset the default
+            # This prevents the mask factor from getting stuck after toggling
+            # use_mask off and back on.
             if math:
                 math.inputs[1].default_value = layer.opacity
                 links = ng.links
-                
-                # Clear existing connections
-                for link in math.inputs[0].links:
+
+                # Step 1 — always clear existing connections on the mask input
+                for link in list(math.inputs[0].links):
                     links.remove(link)
-                
-                # Create new connection if mask is enabled
+
+                # Step 2 — wire mask or restore default
                 if layer.mask_image and layer.use_mask:
                     links.new(t_mask.outputs['Color'], math.inputs[0])
                 else:
+                    # Reset so a future mask reconnects cleanly
                     math.inputs[0].default_value = 1.0
-                    
+
         except Exception as e:
             logger.error(f"Failed to update layer group '{ng.name}': {e}")
 
@@ -198,14 +209,14 @@ class NodeTreeManager:
     ) -> Optional[ShaderNode]:
         """
         Build the composition chain (mix nodes) for all visible layers.
-        
+
         Args:
             obj: The object being rendered
             visible_layers: List of visible layers to compose
             nodes: Node collection
             links: Link collection
             manager_frame: The manager frame node
-            
+
         Returns:
             The final output color node, or None if no layers
         """
@@ -239,7 +250,7 @@ class NodeTreeManager:
                 mix_node.blend_type = layer.blend_type
                 mix_node.parent = manager_frame
                 mix_node.location = (start_x + (index * NODE_HORIZONTAL_SPACING),
-                                   start_y - (index * NODE_VERTICAL_SPACING))
+                                     start_y - (index * NODE_VERTICAL_SPACING))
 
                 # Wire mix node
                 try:
@@ -256,7 +267,7 @@ class NodeTreeManager:
     def set_active_layer_selection(obj: Object, nodes: bpy.types.Nodes) -> None:
         """
         Update node selection to highlight the active layer.
-        
+
         Args:
             obj: The object with active layer info
             nodes: Node collection to update
@@ -276,9 +287,9 @@ class NodeTreeManager:
 
             # Find and select the active layer's group node
             group_node = next(
-                (n for n in nodes 
-                 if n.type == SHADER_TYPE_GROUP 
-                 and getattr(n, "node_tree", None) 
+                (n for n in nodes
+                 if n.type == SHADER_TYPE_GROUP
+                 and getattr(n, "node_tree", None)
                  and n.node_tree.name == active_layer.group_name),
                 None
             )
@@ -315,12 +326,12 @@ class NodeTreeManager:
 def rebuild_node_tree(obj: Object) -> bool:
     """
     Rebuild the entire shader node tree for an object's layers.
-    
+
     This is the main entry point for updating layer composition.
-    
+
     Args:
         obj: The object to rebuild the node tree for
-        
+
     Returns:
         True if successful, False otherwise
     """

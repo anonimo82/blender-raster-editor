@@ -23,13 +23,13 @@ class BaseOperator(Operator):
     def _validate_active_object(context: Context) -> Object:
         """
         Validate that an active object exists.
-        
+
         Args:
             context: Blender context
-            
+
         Returns:
             Active object
-            
+
         Raises:
             RuntimeError if no active object
         """
@@ -42,10 +42,10 @@ class BaseOperator(Operator):
     def _validate_active_material(obj: Object) -> None:
         """
         Validate that object has an active material with nodes.
-        
+
         Args:
             obj: Object to validate
-            
+
         Raises:
             RuntimeError if validation fails
         """
@@ -72,7 +72,7 @@ class BaseOperator(Operator):
 
 class RASTER_OT_create_canvas(BaseOperator):
     """Create a new canvas ready for painting."""
-    
+
     bl_idname = "raster.create_canvas"
     bl_label = "Create Canvas"
     bl_description = "Creates a plane ready for painting"
@@ -113,7 +113,7 @@ class RASTER_OT_create_canvas(BaseOperator):
 
 class RASTER_OT_add_layer(BaseOperator):
     """Add a new layer to the current canvas."""
-    
+
     bl_idname = "raster.add_layer"
     bl_label = "Add Layer"
     bl_description = "Adds a new layer"
@@ -137,7 +137,7 @@ class RASTER_OT_add_layer(BaseOperator):
 
 class RASTER_OT_remove_layer(BaseOperator):
     """Remove a layer from the canvas."""
-    
+
     bl_idname = "raster.remove_layer"
     bl_label = "Remove Layer"
     bl_options = {'REGISTER', 'UNDO'}
@@ -170,7 +170,7 @@ class RASTER_OT_remove_layer(BaseOperator):
 
 class RASTER_OT_move_layer(BaseOperator):
     """Move a layer up or down in the stack."""
-    
+
     bl_idname = "raster.move_layer"
     bl_label = "Move Layer"
     bl_options = {'REGISTER', 'UNDO'}
@@ -217,7 +217,7 @@ class RASTER_OT_move_layer(BaseOperator):
 
 class RASTER_OT_duplicate_layer(BaseOperator):
     """Duplicate a layer."""
-    
+
     bl_idname = "raster.duplicate_layer"
     bl_label = "Duplicate Layer"
     bl_options = {'REGISTER', 'UNDO'}
@@ -261,7 +261,7 @@ class RASTER_OT_duplicate_layer(BaseOperator):
 
 class RASTER_OT_set_active_layer(BaseOperator):
     """Set the active layer for painting."""
-    
+
     bl_idname = "raster.set_active_layer"
     bl_label = "Set Active Layer"
     bl_description = "Select this layer to paint on it"
@@ -297,7 +297,7 @@ class RASTER_OT_set_active_layer(BaseOperator):
 
 class RASTER_OT_create_mask(BaseOperator):
     """Create a mask for a layer."""
-    
+
     bl_idname = "raster.create_mask"
     bl_label = "Create Mask"
     bl_description = "Adds a white mask to the layer"
@@ -324,7 +324,9 @@ class RASTER_OT_create_mask(BaseOperator):
                     name=img_name,
                     width=DEFAULT_MASK_RESOLUTION,
                     height=DEFAULT_MASK_RESOLUTION,
-                    alpha=not DEFAULT_IMAGE_ALPHA
+                    # FIX #6: use the dedicated MASK_IMAGE_ALPHA constant
+                    # instead of the confusing `not DEFAULT_IMAGE_ALPHA` expression.
+                    alpha=MASK_IMAGE_ALPHA
                 )
                 mask_img.generated_color = DEFAULT_MASK_COLOR
                 layer.mask_image = mask_img
@@ -342,7 +344,7 @@ class RASTER_OT_create_mask(BaseOperator):
 
 class RASTER_OT_remove_mask(BaseOperator):
     """Remove a layer's mask."""
-    
+
     bl_idname = "raster.remove_mask"
     bl_label = "Remove Mask"
     bl_options = {'REGISTER', 'UNDO'}
@@ -375,7 +377,7 @@ class RASTER_OT_remove_mask(BaseOperator):
 
 class RASTER_OT_sync_layers(BaseOperator):
     """Sync layer properties with the node tree."""
-    
+
     bl_idname = "raster.sync_layers"
     bl_label = "Apply Changes"
     bl_description = "Force node tree update (useful for opacity)"
@@ -394,7 +396,7 @@ class RASTER_OT_sync_layers(BaseOperator):
 
 class RASTER_OT_resize_canvas(BaseOperator):
     """Resize all layers' canvas."""
-    
+
     bl_idname = "raster.resize_canvas"
     bl_label = "Resize Canvas"
     bl_description = "Change resolution of all layers (adds empty space, no stretching)"
@@ -427,12 +429,12 @@ class RASTER_OT_resize_canvas(BaseOperator):
     def _resize_image_canvas(image, new_width: int, new_height: int):
         """
         Resize an image canvas without stretching.
-        
+
         Args:
             image: Image to resize
             new_width: New width
             new_height: New height
-            
+
         Returns:
             Resized image or original if invalid
         """
@@ -463,8 +465,8 @@ class RASTER_OT_resize_canvas(BaseOperator):
 
             # Copy pixels
             if copy_h > 0 and copy_w > 0:
-                new_pixels[y_off:y_off+copy_h, x_off:x_off+copy_w] = \
-                    old_pixels[old_start_y:old_start_y+copy_h, old_start_x:old_start_x+copy_w]
+                new_pixels[y_off:y_off + copy_h, x_off:x_off + copy_w] = \
+                    old_pixels[old_start_y:old_start_y + copy_h, old_start_x:old_start_x + copy_w]
 
             # Create new image
             new_img = bpy.data.images.new(
@@ -482,6 +484,10 @@ class RASTER_OT_resize_canvas(BaseOperator):
     def execute(self, context: Context):
         try:
             obj = self._validate_active_object(context)
+            # FIX #2: validate the material before proceeding, so a missing
+            # material produces a clear user-facing error instead of a silent
+            # False return from rebuild_node_tree() at the end.
+            self._validate_active_material(obj)
 
             # Resize all layer images
             for layer in obj.raster_layers:
@@ -509,7 +515,7 @@ class RASTER_OT_resize_canvas(BaseOperator):
 
 class RASTER_OT_merge_visible(BaseOperator):
     """Merge all visible layers into a single baked image."""
-    
+
     bl_idname = "raster.merge_visible"
     bl_label = "Merge Visible"
     bl_description = "Bake visible layers into a new image"
@@ -610,7 +616,7 @@ class RASTER_OT_merge_visible(BaseOperator):
 
 class RASTER_OT_setup_camera(BaseOperator):
     """Setup an orthographic camera framing the canvas."""
-    
+
     bl_idname = "raster.setup_camera"
     bl_label = "Frame Camera"
     bl_description = "Frames the canvas with an Orthographic camera"

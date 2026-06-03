@@ -45,6 +45,10 @@ DEFAULT_MASK_RESOLUTION = 1024
 DEFAULT_MASK_COLOR = (1.0, 1.0, 1.0, 1.0)
 DEFAULT_IMAGE_ALPHA = True
 
+# FIX #6: dedicated constant for mask images (greyscale, no alpha channel).
+# Replaces the confusing `not DEFAULT_IMAGE_ALPHA` expression used in operators.py.
+MASK_IMAGE_ALPHA = False
+
 # Merge/bake settings
 BAKE_ENGINE = "CYCLES"
 BAKE_TYPE = "DIFFUSE"

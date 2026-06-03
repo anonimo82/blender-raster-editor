@@ -126,13 +126,21 @@ class VIEW3D_PT_raster_layers(Panel):
 
     @staticmethod
     def _draw_layer_reorder_buttons(row: UILayout, index: int) -> None:
-        """Draw layer reorder (up/down) buttons."""
+        """Draw layer reorder (up/down) buttons.
+
+        FIX #5: buttons now use semantically correct direction values.
+        Previously TRIA_UP fired direction='DOWN' and vice versa to compensate
+        for the reversed draw order, making the code misleading and fragile.
+        The operator itself uses logical UP/DOWN (lower/higher index), and the
+        reversed display order is handled solely in _draw_layer_list — the two
+        concerns are now cleanly separated.
+        """
         btn_up = row.operator("raster.move_layer", text="", icon='TRIA_UP')
-        btn_up.direction = 'DOWN'
+        btn_up.direction = 'UP'
         btn_up.index = index
 
         btn_down = row.operator("raster.move_layer", text="", icon='TRIA_DOWN')
-        btn_down.direction = 'UP'
+        btn_down.direction = 'DOWN'
         btn_down.index = index
 
     @staticmethod
