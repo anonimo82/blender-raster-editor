@@ -5,7 +5,6 @@ Provides Photoshop-like layers with blend modes, masks, and video support.
 
 import sys
 import logging
-from typing import Callable
 
 import bpy
 

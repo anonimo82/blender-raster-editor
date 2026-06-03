@@ -7,7 +7,7 @@ import logging
 from typing import Optional, List
 
 import bpy
-from bpy.types import Object, Material, ShaderNodeTree, Node, ShaderNode
+from bpy.types import Object, ShaderNodeTree, Node, ShaderNode
 
 from .constants import *
 
@@ -48,7 +48,11 @@ class NodeTreeManager:
         manager_frame = nodes.get(NODE_FRAME_NAME)
 
         if manager_frame:
-            # Collect orphan node groups before removing child nodes
+            # IMPORTANT — order dependency: orphan_groups must be snapshotted
+            # BEFORE nodes.remove() is called. While the group nodes still exist
+            # their node_tree has users >= 1, so we can safely collect references.
+            # After removal users drops to 0, making the ng.users == 0 check
+            # below correct. Reversing these two steps would break the purge.
             orphan_groups = [
                 n.node_tree for n in nodes
                 if n.parent == manager_frame
