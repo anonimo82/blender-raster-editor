@@ -19,7 +19,15 @@ SOCKET_FACTOR_OUTPUT = "Factor"
 
 # Shader node types
 SHADER_TYPE_PRINCIPLED = "BSDF_PRINCIPLED"
-SHADER_TYPE_GROUP = "GROUP"
+
+# Fix Blender 5.1 compatibility: nodes.new() and n.type use different strings
+# for group nodes. nodes.new() requires "ShaderNodeGroup" (changed in 5.1),
+# while n.type still returns the legacy "GROUP" string for read-only checks.
+# Keeping them as separate constants makes the distinction explicit and allows
+# each to be updated independently if Blender changes either value again.
+SHADER_TYPE_GROUP = "ShaderNodeGroup"   # passed to nodes.new()
+SHADER_NODE_GROUP_TYPE = "GROUP"        # compared against n.type
+
 # nodes.new() identifiers
 NODE_TYPE_MIX = "ShaderNodeMix"
 NODE_TYPE_TEX_IMAGE = "ShaderNodeTexImage"

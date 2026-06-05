@@ -53,10 +53,14 @@ class NodeTreeManager:
             # their node_tree has users >= 1, so we can safely collect references.
             # After removal users drops to 0, making the ng.users == 0 check
             # below correct. Reversing these two steps would break the purge.
+            #
+            # Fix Blender 5.1: use SHADER_NODE_GROUP_TYPE ("GROUP") for the
+            # n.type read-only check, not SHADER_TYPE_GROUP ("ShaderNodeGroup")
+            # which is only valid as a nodes.new() argument.
             orphan_groups = [
                 n.node_tree for n in nodes
                 if n.parent == manager_frame
-                and n.type == SHADER_TYPE_GROUP
+                and n.type == SHADER_NODE_GROUP_TYPE
                 and getattr(n, "node_tree", None) is not None
             ]
             child_nodes = [n for n in nodes if n.parent == manager_frame]
@@ -66,8 +70,12 @@ class NodeTreeManager:
             # to avoid accumulating orphan data-blocks during a session.
             for ng in orphan_groups:
                 if ng.users == 0:
+                    # Fix Blender 5.1: save the name before removal. After
+                    # bpy.data.node_groups.remove() the Python object is
+                    # deallocated and accessing ng.name raises a ReferenceError.
+                    ng_name = ng.name
                     bpy.data.node_groups.remove(ng)
-                    logger.debug(f"Purged orphan node group: {ng.name}")
+                    logger.debug(f"Purged orphan node group: {ng_name}")
         else:
             # Create new frame
             manager_frame = nodes.new(NODE_TYPE_FRAME)
@@ -264,7 +272,9 @@ class NodeTreeManager:
 
             NodeTreeManager.update_layer_group(ng, layer)
 
-            # Create group node
+            # Create group node in the material node tree.
+            # Fix Blender 5.1: nodes.new() requires "ShaderNodeGroup" (SHADER_TYPE_GROUP),
+            # not the legacy "GROUP" string which is only valid for n.type checks.
             group_node = nodes.new(SHADER_TYPE_GROUP)
             group_node.node_tree = ng
             group_node.parent = manager_frame
@@ -322,10 +332,13 @@ class NodeTreeManager:
             for n in nodes:
                 n.select = False
 
-            # Find and select the active layer's group node
+            # Find and select the active layer's group node.
+            # Fix Blender 5.1: compare against SHADER_NODE_GROUP_TYPE ("GROUP"),
+            # which is the value returned by n.type for group nodes — distinct
+            # from SHADER_TYPE_GROUP ("ShaderNodeGroup") used in nodes.new().
             group_node = next(
                 (n for n in nodes
-                 if n.type == SHADER_TYPE_GROUP
+                 if n.type == SHADER_NODE_GROUP_TYPE
                  and getattr(n, "node_tree", None)
                  and n.node_tree.name == active_layer.group_name),
                 None
