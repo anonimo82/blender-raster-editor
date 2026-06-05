@@ -209,21 +209,15 @@ class VIEW3D_PT_raster_layers(Panel):
 
         settings = context.tool_settings.image_paint
 
-        # Fix Blender 5.1: in a new .blend file or after a restart, no brush
-        # is assigned to image_paint and settings.brush is None, causing
-        # template_ID to render a red "missing" box for every brush choice.
-        # Automatically assign the first available image-paint brush so the
-        # selector shows a valid brush immediately without user intervention.
-        if settings.brush is None:
-            available = [b for b in bpy.data.brushes if b.use_paint_image]
-            if available:
-                settings.brush = available[0]
-                logger.debug(f"Auto-assigned brush '{available[0].name}' to image paint settings")
-
-        layout.template_ID(settings, "brush", new="brush.add")
-
+        # Fix Blender 5.1: image_paint.brush is read-only and template_ID
+        # renders a red box regardless of whether a brush is active, because
+        # the brush selector is managed by Blender's tool system rather than
+        # being directly assignable. Replacing template_ID with a label avoids
+        # the misleading red display while still exposing the relevant brush
+        # properties (color, size, strength, blend mode) for quick access.
         brush = settings.brush
         if brush:
+            layout.label(text=f"Brush: {brush.name}", icon='BRUSH_DATA')
             box = layout.box()
             col = box.column(align=True)
             col.prop(brush, "color", text="Color")
@@ -232,6 +226,8 @@ class VIEW3D_PT_raster_layers(Panel):
             col.prop(brush, "strength", slider=True)
             col.separator()
             col.prop(brush, "blend", text="Mode")
+        else:
+            layout.label(text="No brush active", icon='ERROR')
 
 
 def register() -> None:
