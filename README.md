@@ -377,7 +377,7 @@ Clicking **Frame Camera** will:
 |---|---|
 | `__init__.py` | Add-on entry point. Registers modules in correct dependency order; configures the package-level logger. |
 | `constants.py` | Single source of truth for all magic strings, numeric defaults, and node identifiers. Edit this file to change defaults globally. |
-| `properties.py` | Custom Blender properties (`RasterLayerItem`, object-level collections). Defines the `_auto_update_tree` callback fired on every property change. |
+| `properties.py` | Custom Blender properties (`RasterLayerItem`, object-level collections). Defines the `_auto_update_tree` callback fired on most property changes, and the dedicated `_opacity_update` callback for the opacity slider. |
 | `engine.py` | `NodeTreeManager` class and `rebuild_node_tree()` function. All shader node construction, linking, and synchronisation lives here. |
 | `operators.py` | `bpy.types.Operator` subclasses for every user action. `BaseOperator` provides shared validation helpers. |
 | `ui.py` | `VIEW3D_PT_raster_layers` panel and all static drawing helpers. |
@@ -393,7 +393,9 @@ User action in the UI panel
   → Blender's viewport updates
 ```
 
-Property changes (`image`, `opacity`, `blend_type`, `is_visible`, `use_mask`) also trigger the `_auto_update_tree` callback automatically, so the node tree stays in sync without requiring an explicit operator call.
+Property changes (`image`, `blend_type`, `is_visible`, `use_mask`) trigger the `_auto_update_tree` callback automatically, so the node tree stays in sync without requiring an explicit operator call.
+
+The `opacity` property uses a dedicated `_opacity_update` callback instead. Because opacity is a continuous float slider, Blender fires its update callback on every redraw tick during a drag — potentially dozens of times per second. Running a full `rebuild_node_tree()` on each tick causes noticeable lag on complex scenes. `_opacity_update` patches only the relevant Math node input in-place via `NodeTreeManager.update_layer_group()`, keeping the slider interaction smooth. The **Apply Opacity** button in the Utilities panel triggers a full rebuild as a manual override for cases where EEVEE's shader cache still delays the visual result.
 
 ### 8.3 Extending the Add-on
 
@@ -412,7 +414,7 @@ Property changes (`image`, `opacity`, `blend_type`, `is_visible`, `use_mask`) al
 #### Adding a New Layer Property
 
 1. Define the `bpy.props.*` field in `RasterLayerItem` in `properties.py`.
-2. Add `update=_auto_update_tree` to the property definition so the node tree rebuilds automatically on change.
+2. Add `update=_auto_update_tree` to the property definition so the node tree rebuilds automatically on change. If the property is a continuous value that may fire rapidly (like a float slider), consider a dedicated lightweight callback on the model of `_opacity_update` instead.
 3. Handle the new property in `NodeTreeManager.update_layer_group()` in `engine.py`.
 4. Expose the property in `ui.py` inside `_draw_layer_item()`.
 
