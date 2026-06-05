@@ -466,7 +466,9 @@ class RASTER_OT_resize_canvas(BaseOperator):
                      (consistent with MASK_IMAGE_ALPHA used in create_mask).
 
         Returns:
-            Resized image or original if invalid
+            Resized image or original if invalid / on error.
+            Never returns None — callers can rely on a non-None return value
+            when a non-None image is passed in.
         """
         if not image or image.source in {IMAGE_SOURCE_MOVIE, IMAGE_SOURCE_SEQUENCE}:
             return image
@@ -536,15 +538,24 @@ class RASTER_OT_resize_canvas(BaseOperator):
                 else:
                     layer.image = new_img
 
-                # Fix: pass is_mask=True so resized mask images are created
-                # without alpha channel, matching RASTER_OT_create_mask behaviour.
-                new_mask = self._resize_image_canvas(layer.mask_image, self.new_width, self.new_height, is_mask=True)
-                if new_mask is layer.mask_image and layer.mask_image is not None and \
-                   layer.mask_image.source not in {IMAGE_SOURCE_MOVIE, IMAGE_SOURCE_SEQUENCE} and \
-                   (layer.mask_image.size[0] != self.new_width or layer.mask_image.size[1] != self.new_height):
-                    resize_failures.append(f'{layer.name} (mask)')
-                else:
-                    layer.mask_image = new_mask
+                # Fix: guard explicitly on layer.mask_image being non-None before
+                # attempting to resize it. When mask_image is None, skipping the
+                # call entirely makes the intent clear and avoids relying on the
+                # internal early-return of _resize_image_canvas to handle None.
+                # Previously the call was made unconditionally, which was safe but
+                # fragile — correctness depended on an internal implementation detail.
+                if layer.mask_image is not None:
+                    # Fix: pass is_mask=True so resized mask images are created
+                    # without alpha channel, matching RASTER_OT_create_mask behaviour.
+                    new_mask = self._resize_image_canvas(
+                        layer.mask_image, self.new_width, self.new_height, is_mask=True
+                    )
+                    if new_mask is layer.mask_image and \
+                       layer.mask_image.source not in {IMAGE_SOURCE_MOVIE, IMAGE_SOURCE_SEQUENCE} and \
+                       (layer.mask_image.size[0] != self.new_width or layer.mask_image.size[1] != self.new_height):
+                        resize_failures.append(f'{layer.name} (mask)')
+                    else:
+                        layer.mask_image = new_mask
 
             if resize_failures:
                 self._report_warning(
@@ -656,9 +667,14 @@ class RASTER_OT_merge_visible(BaseOperator):
                     # Perform bake
                     bpy.ops.object.bake(type=BAKE_TYPE, save_mode='INTERNAL')
                 finally:
-                    # Fix D: always remove the bake node, even if bake() raises
-                    # an exception (e.g. Cycles unavailable, missing UVs).
-                    # Without this the temporary node corrupts the tree permanently.
+                    # Remove the temporary bake target node unconditionally.
+                    # The finally block runs on both success and failure:
+                    # - On failure (bake() raises): the node must be removed to
+                    #   avoid permanently corrupting the node tree (Fix D).
+                    # - On success: the node is also removed here, before the
+                    #   merged layer is added and the tree is rebuilt. This is
+                    #   intentional — the bake node is always a temporary
+                    #   artefact and must not persist in either case.
                     if bake_node and bake_node.name in nodes:
                         nodes.remove(bake_node)
 

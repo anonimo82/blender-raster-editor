@@ -106,6 +106,49 @@ def _auto_update_tree(self: 'RasterLayerItem', context: bpy.types.Context) -> No
         logger.error(f"Failed to rebuild node tree on property update: {e}")
 
 
+def _opacity_update(self: 'RasterLayerItem', context: bpy.types.Context) -> None:
+    """
+    Dedicated callback for the opacity property.
+
+    Unlike other properties (blend_type, is_visible, image, …) that change
+    infrequently, opacity is a continuous float slider. Blender fires the
+    update callback on every redraw tick while the user drags, which can
+    produce dozens of calls per second and trigger a full rebuild_node_tree()
+    each time. On complex scenes with many layers this causes noticeable lag.
+
+    To keep interactivity smooth this callback calls only update_layer_group()
+    — which patches the single Math node's input value in-place — instead of
+    tearing down and rebuilding the entire shader graph. A full rebuild is
+    neither necessary nor desirable for a pure opacity change.
+
+    The "Apply Opacity" button in the Utilities section calls the full
+    rebuild_node_tree() as a manual override for the rare cases where EEVEE's
+    shader cache still delays the visual update despite this targeted patch.
+    """
+    obj = _find_owner_object(self)
+    if obj is None:
+        logger.warning("_opacity_update: could not find owner object for layer; skipping update")
+        return
+
+    try:
+        from .engine import NodeTreeManager
+        import bpy as _bpy
+
+        # Find the node group for this layer and update only the opacity input,
+        # without rebuilding the rest of the composition chain.
+        if self.group_name and self.group_name in _bpy.data.node_groups:
+            ng = _bpy.data.node_groups[self.group_name]
+            NodeTreeManager.update_layer_group(ng, self)
+            logger.debug(f"Patched opacity for layer '{self.name}' (group '{self.group_name}')")
+        else:
+            # Group doesn't exist yet (e.g. layer just added) — fall back to
+            # a full rebuild so the node tree is initialised correctly.
+            from .engine import rebuild_node_tree
+            rebuild_node_tree(obj)
+    except Exception as e:
+        logger.error(f"Failed to update opacity for layer '{self.name}': {e}")
+
+
 class RasterLayerItem(PropertyGroup):
     """
     Represents a single layer in the raster layer system.
@@ -121,11 +164,15 @@ class RasterLayerItem(PropertyGroup):
         group_name: Internal node group identifier
 
     Note on opacity callback:
-        opacity intentionally carries update=_auto_update_tree so that dragging
-        the slider triggers a node tree rebuild in real time, consistent with
-        all other layer properties. In practice EEVEE's shader cache may still
-        delay the visual update — the "Apply Opacity" button in the Utilities
-        section is kept as a manual override for those cases.
+        opacity uses a dedicated _opacity_update callback instead of the
+        general _auto_update_tree. Because opacity is a continuous float
+        slider, Blender fires its update callback on every redraw tick during
+        a drag — potentially dozens of times per second. Running a full
+        rebuild_node_tree() on each tick causes noticeable lag on complex
+        scenes. _opacity_update patches only the relevant Math node input via
+        update_layer_group(), keeping interaction smooth. The "Apply Opacity"
+        button in the Utilities panel is retained as a manual override for
+        cases where EEVEE's shader cache still delays the visual result.
     """
 
     name: bpy.props.StringProperty(
@@ -190,12 +237,11 @@ class RasterLayerItem(PropertyGroup):
         update=_auto_update_tree
     )
 
-    # Fix: add update=_auto_update_tree so opacity changes trigger a node tree
-    # rebuild automatically, consistent with all other layer properties.
-    # Previously opacity was the only property without this callback, which is
-    # why the "Apply Opacity" button existed as a workaround. The button is kept
-    # in the UI as a manual override for cases where EEVEE's shader cache delays
-    # the visual update despite the callback firing.
+    # Fix: use a dedicated _opacity_update callback instead of the general
+    # _auto_update_tree. Dragging the slider fires the callback on every
+    # redraw tick; a full node tree rebuild each time causes lag on complex
+    # scenes. _opacity_update patches only the Math node's opacity input
+    # in-place via update_layer_group(), which is both sufficient and fast.
     opacity: bpy.props.FloatProperty(
         name="Opacity",
         description="Layer opacity (0 = transparent, 1 = opaque)",
@@ -203,7 +249,7 @@ class RasterLayerItem(PropertyGroup):
         min=0.0,
         max=1.0,
         subtype='FACTOR',
-        update=_auto_update_tree
+        update=_opacity_update
     )
 
     group_name: bpy.props.StringProperty(
