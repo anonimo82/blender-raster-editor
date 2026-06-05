@@ -454,7 +454,7 @@ class RASTER_OT_resize_canvas(BaseOperator):
         return context.window_manager.invoke_props_dialog(self)
 
     @staticmethod
-    def _resize_image_canvas(image, new_width: int, new_height: int):
+    def _resize_image_canvas(image, new_width: int, new_height: int, is_mask: bool = False):
         """
         Resize an image canvas without stretching.
 
@@ -462,6 +462,8 @@ class RASTER_OT_resize_canvas(BaseOperator):
             image: Image to resize
             new_width: New width
             new_height: New height
+            is_mask: If True, creates the new image without alpha channel
+                     (consistent with MASK_IMAGE_ALPHA used in create_mask).
 
         Returns:
             Resized image or original if invalid
@@ -496,12 +498,15 @@ class RASTER_OT_resize_canvas(BaseOperator):
                 new_pixels[y_off:y_off + copy_h, x_off:x_off + copy_w] = \
                     old_pixels[old_start_y:old_start_y + copy_h, old_start_x:old_start_x + copy_w]
 
-            # Create new image
+            # Fix: use MASK_IMAGE_ALPHA (False) when resizing mask images so the
+            # new image is consistent with masks created by RASTER_OT_create_mask.
+            # Previously DEFAULT_IMAGE_ALPHA (True) was used unconditionally, giving
+            # resized masks an unexpected alpha channel.
             new_img = bpy.data.images.new(
                 name=f"{image.name}_Resized",
                 width=new_width,
                 height=new_height,
-                alpha=DEFAULT_IMAGE_ALPHA
+                alpha=MASK_IMAGE_ALPHA if is_mask else DEFAULT_IMAGE_ALPHA
             )
             new_img.pixels.foreach_set(new_pixels.ravel())
             return new_img
@@ -523,7 +528,7 @@ class RASTER_OT_resize_canvas(BaseOperator):
 
             # Resize all layer images
             for layer in obj.raster_layers:
-                new_img = self._resize_image_canvas(layer.image, self.new_width, self.new_height)
+                new_img = self._resize_image_canvas(layer.image, self.new_width, self.new_height, is_mask=False)
                 if new_img is layer.image and layer.image is not None and \
                    layer.image.source not in {IMAGE_SOURCE_MOVIE, IMAGE_SOURCE_SEQUENCE} and \
                    (layer.image.size[0] != self.new_width or layer.image.size[1] != self.new_height):
@@ -531,7 +536,9 @@ class RASTER_OT_resize_canvas(BaseOperator):
                 else:
                     layer.image = new_img
 
-                new_mask = self._resize_image_canvas(layer.mask_image, self.new_width, self.new_height)
+                # Fix: pass is_mask=True so resized mask images are created
+                # without alpha channel, matching RASTER_OT_create_mask behaviour.
+                new_mask = self._resize_image_canvas(layer.mask_image, self.new_width, self.new_height, is_mask=True)
                 if new_mask is layer.mask_image and layer.mask_image is not None and \
                    layer.mask_image.source not in {IMAGE_SOURCE_MOVIE, IMAGE_SOURCE_SEQUENCE} and \
                    (layer.mask_image.size[0] != self.new_width or layer.mask_image.size[1] != self.new_height):
@@ -545,8 +552,12 @@ class RASTER_OT_resize_canvas(BaseOperator):
                     "Other layers were resized successfully."
                 )
 
-            # Adjust object dimensions to match aspect ratio
-            if self.new_width > 0 and self.new_height > 0:
+            # Fix: only adjust object dimensions when all images were resized
+            # successfully (or there were no images to resize). If some layers
+            # failed, the geometric aspect ratio would diverge from the actual
+            # pixel content, so we skip the adjustment and leave dimensions
+            # as they were.
+            if not resize_failures and self.new_width > 0 and self.new_height > 0:
                 ratio = self.new_width / self.new_height
                 max_dim = max(obj.dimensions.x, obj.dimensions.y)
                 if ratio >= 1:
@@ -594,6 +605,13 @@ class RASTER_OT_merge_visible(BaseOperator):
         context.scene.render.bake.use_pass_color = True
 
     def execute(self, context: Context):
+        # Fix: save orig_engine BEFORE the inner try block so that the finally
+        # clause can always restore it, even if an early RuntimeError (e.g. from
+        # _validate_active_material) is raised before the assignment inside the
+        # inner try. Without this, a NameError on orig_engine would suppress the
+        # original exception and leave the render engine in an undefined state.
+        orig_engine = context.scene.render.engine
+
         try:
             obj = self._validate_active_object(context)
             self._validate_active_material(obj)
@@ -610,9 +628,6 @@ class RASTER_OT_merge_visible(BaseOperator):
             rebuild_node_tree(obj)
             mat = obj.active_material
             nodes = mat.node_tree.nodes
-
-            # Save original state
-            orig_engine = context.scene.render.engine
 
             try:
                 # Setup baking
@@ -667,12 +682,14 @@ class RASTER_OT_merge_visible(BaseOperator):
                 self._report_error(f"{ERROR_BAKE_FAILED}: {str(e)}")
                 return {'CANCELLED'}
 
-            finally:
-                context.scene.render.engine = orig_engine
-
         except RuntimeError as e:
             self._report_error(str(e))
             return {'CANCELLED'}
+
+        finally:
+            # Always restore the original render engine, regardless of which
+            # exception path was taken (including early RuntimeError above).
+            context.scene.render.engine = orig_engine
 
 
 class RASTER_OT_setup_camera(BaseOperator):

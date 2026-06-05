@@ -23,6 +23,12 @@ def _find_owner_object(layer_item: 'RasterLayerItem') -> 'Optional[bpy.types.Obj
     callback (e.g. when properties are changed via script while a different
     object is selected). Scanning scene objects is the only safe approach.
 
+    Performance note: this function is O(objects × layers_per_object). In
+    typical scenes (few canvases, few layers each) this is negligible. If
+    performance ever becomes an issue, consider caching owner_name on the
+    layer item itself and using it as an O(1) fast path with a fallback to
+    the full scan when the cached name is stale or empty.
+
     Args:
         layer_item: The layer whose owner we need to locate.
 
@@ -113,6 +119,13 @@ class RasterLayerItem(PropertyGroup):
         blend_type: Blending mode (Mix, Multiply, etc.)
         opacity: Layer opacity (0.0 - 1.0)
         group_name: Internal node group identifier
+
+    Note on opacity callback:
+        opacity intentionally carries update=_auto_update_tree so that dragging
+        the slider triggers a node tree rebuild in real time, consistent with
+        all other layer properties. In practice EEVEE's shader cache may still
+        delay the visual update — the "Apply Opacity" button in the Utilities
+        section is kept as a manual override for those cases.
     """
 
     name: bpy.props.StringProperty(
@@ -177,13 +190,20 @@ class RasterLayerItem(PropertyGroup):
         update=_auto_update_tree
     )
 
+    # Fix: add update=_auto_update_tree so opacity changes trigger a node tree
+    # rebuild automatically, consistent with all other layer properties.
+    # Previously opacity was the only property without this callback, which is
+    # why the "Apply Opacity" button existed as a workaround. The button is kept
+    # in the UI as a manual override for cases where EEVEE's shader cache delays
+    # the visual update despite the callback firing.
     opacity: bpy.props.FloatProperty(
         name="Opacity",
         description="Layer opacity (0 = transparent, 1 = opaque)",
         default=DEFAULT_OPACITY,
         min=0.0,
         max=1.0,
-        subtype='FACTOR'
+        subtype='FACTOR',
+        update=_auto_update_tree
     )
 
     group_name: bpy.props.StringProperty(

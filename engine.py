@@ -74,6 +74,7 @@ class NodeTreeManager:
             manager_frame.name = NODE_FRAME_NAME
             manager_frame.label = NODE_FRAME_LABEL
             manager_frame.label_size = NODE_FRAME_LABEL_SIZE
+            logger.debug(f"Created new manager frame: {NODE_FRAME_NAME}")
 
         return manager_frame
 
@@ -88,11 +89,18 @@ class NodeTreeManager:
         Returns:
             The node group, or None if creation failed
         """
-        # FIX #3: use the already-resolved `ng` variable in the inner check
-        # instead of re-fetching from bpy.data.node_groups a second time.
         if layer.group_name and layer.group_name in bpy.data.node_groups:
             ng = bpy.data.node_groups[layer.group_name]
-            if "Factor" in ng.interface.items_tree:
+            # Fix: log a warning when the group exists but is missing the
+            # expected Factor socket. Previously this fell through silently to
+            # "create new", which could produce duplicate groups with no
+            # indication that the original was corrupt.
+            if SOCKET_FACTOR_OUTPUT not in ng.interface.items_tree:
+                logger.warning(
+                    f"Node group '{ng.name}' for layer '{layer.name}' is missing "
+                    f"the '{SOCKET_FACTOR_OUTPUT}' socket — recreating it."
+                )
+            else:
                 return ng
 
         # Create new node group

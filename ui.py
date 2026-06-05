@@ -20,7 +20,10 @@ class VIEW3D_PT_raster_layers(Panel):
     bl_region_type = UI_PANEL_REGION
     bl_category = UI_PANEL_CATEGORY
     bl_label = "Layer Manager"
-    bl_options = {'DEFAULT_CLOSED'}
+    # Fix: removed 'DEFAULT_CLOSED' so the panel is visible immediately after
+    # enabling the add-on. A first-time user seeing a blank, collapsed panel
+    # has no obvious next step. The panel is lightweight enough that keeping
+    # it open by default has no performance cost.
 
     def draw(self, context: bpy.types.Context) -> None:
         """Draw the main panel UI."""
@@ -64,6 +67,12 @@ class VIEW3D_PT_raster_layers(Panel):
     @staticmethod
     def _draw_layer_list(layout: UILayout, obj: Object, context: bpy.types.Context) -> None:
         """Draw the list of layers."""
+        # Fix: show a helpful hint when no layers exist yet, so the user knows
+        # what to do rather than seeing an empty, unexplained space.
+        if not obj.raster_layers:
+            layout.label(text="No layers — click Add Layer to start", icon='INFO')
+            return
+
         # Display layers in reverse order (top to bottom = highest to lowest in stack)
         for i in reversed(range(len(obj.raster_layers))):
             layer = obj.raster_layers[i]
