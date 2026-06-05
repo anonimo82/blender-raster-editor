@@ -208,6 +208,18 @@ class VIEW3D_PT_raster_layers(Panel):
         layout.label(text="Paint Settings", icon='TOOL_SETTINGS')
 
         settings = context.tool_settings.image_paint
+
+        # Fix Blender 5.1: in a new .blend file or after a restart, no brush
+        # is assigned to image_paint and settings.brush is None, causing
+        # template_ID to render a red "missing" box for every brush choice.
+        # Automatically assign the first available image-paint brush so the
+        # selector shows a valid brush immediately without user intervention.
+        if settings.brush is None:
+            available = [b for b in bpy.data.brushes if b.use_paint_image]
+            if available:
+                settings.brush = available[0]
+                logger.debug(f"Auto-assigned brush '{available[0].name}' to image paint settings")
+
         layout.template_ID(settings, "brush", new="brush.add")
 
         brush = settings.brush
