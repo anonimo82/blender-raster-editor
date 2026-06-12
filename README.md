@@ -1,4 +1,4 @@
-# Blender Raster Editor — Complete Tutorial
+# Blender Raster Editor — Complete Documentation
 
 > **Add-on version:** 1.1.0 | **Blender:** 4.0.0+ | **License:** GNU GPL v3.0
 
@@ -26,7 +26,17 @@
 6. [Known Limitations](#6-known-limitations)
 7. [Blend Mode Reference](#7-blend-mode-reference)
 8. [Developer Reference](#8-developer-reference)
-9. [Quick-Start Cheat Sheet](#9-quick-start-cheat-sheet)
+   - [8.1 Module Architecture](#81-module-architecture)
+   - [8.2 Data Flow](#82-data-flow)
+   - [8.3 RasterLayerItem Property Reference](#83-rasterlayeritem-property-reference)
+   - [8.4 Constants Reference](#84-constants-reference)
+   - [8.5 Extending the Add-on](#85-extending-the-add-on)
+   - [8.6 Blender Version Compatibility](#86-blender-version-compatibility)
+   - [8.7 Multi-Canvas Safety](#87-multi-canvas-safety)
+   - [8.8 Opacity Update Architecture](#88-opacity-update-architecture)
+   - [8.9 Node Group Lifecycle](#89-node-group-lifecycle)
+9. [Changelog](#9-changelog)
+10. [Quick-Start Cheat Sheet](#10-quick-start-cheat-sheet)
 
 ---
 
@@ -43,6 +53,7 @@
 - One-click **Merge Visible** bake using Blender's Cycles engine
 - Canvas resize utility — adds empty space around existing artwork without any stretching
 - Auto-framing orthographic camera setup for clean render output
+- Full compatibility with Blender 4.0+ and 5.1+
 
 ---
 
@@ -52,7 +63,7 @@
 
 | Item | Requirement |
 |---|---|
-| Blender version | 4.0.0 or higher |
+| Blender version | 4.0.0 or higher (including 5.x) |
 | Python module | `numpy` (bundled with Blender — no action needed) |
 | OS | Windows, macOS, Linux |
 | Render engine (for Merge Visible) | Cycles (built-in) |
@@ -65,7 +76,7 @@
 4. Enable the add-on by ticking the checkbox next to **Paint: Blender Raster Editor**.
 5. Press **N** in the 3D Viewport to open the Sidebar, then select the **Paint Layers** tab.
 
-> **Note:** The add-on registers three modules in order: Properties → Operators → UI. Unregistration happens in reverse order. If Blender reports an error during enable, open the **System Console** (Window → Toggle System Console on Windows, or launch Blender from a terminal on macOS/Linux) to read the detailed log output.
+> **Note:** The add-on registers three modules in dependency order: Properties → Operators → UI. Unregistration happens in reverse. If Blender reports an error during enable, open the **System Console** (Window → Toggle System Console on Windows, or launch Blender from a terminal on macOS/Linux) to read the detailed log output. All log messages are prefixed with the module name, e.g. `[blender_raster_editor.engine] DEBUG: …`.
 
 ---
 
@@ -79,6 +90,8 @@ All controls live in the **Paint Layers** sidebar tab (N-panel → Paint Layers)
 | **Layer Management** | Add layers; each layer row shows its image, controls, blend mode, and opacity |
 | **Utilities** | Apply Opacity, Merge Visible, Resize Canvas, Frame Camera |
 | **Paint Settings** | Quick brush controls — visible only when in Texture Paint mode |
+
+The panel opens by default when the add-on is enabled so that new users immediately see the available controls.
 
 ---
 
@@ -140,7 +153,7 @@ Each layer is displayed as a box containing several controls. Here is what every
 | **Name field** | — | Editable text box. Double-click or click once and type to rename the layer. |
 | **Move Up ▲** | Triangle up | Moves the layer one position higher in the stack (increases compositing priority). |
 | **Move Down ▼** | Triangle down | Moves the layer one position lower in the stack (decreases compositing priority). |
-| **Duplicate ⎘** | Copy icon | Creates an independent copy of the layer directly below the original, sharing the same image and mask references but with its own node group. |
+| **Duplicate ⎘** | Copy icon | Creates an independent copy of the layer directly below the original, with its own node group. Both copies initially reference the same image and mask data-blocks; to get fully independent pixel data, reassign the image on the duplicate after copying. |
 | **Delete ✕** | X button | Permanently removes the layer from the stack. This action is undoable (Ctrl+Z). |
 | **Image selector** | — | Blender's built-in `template_ID` widget. Use **New** to create a blank texture at a chosen resolution, or the **folder icon** to open an existing file (`.png`, `.jpg`, `.exr`, `.mp4`, image sequences, etc.). |
 | **Blend Mode** | — | Dropdown with 19 blending algorithms. Only visible on layers above index 0. See [Section 7](#7-blend-mode-reference) for full descriptions. |
@@ -174,7 +187,7 @@ Masks let you non-destructively hide or reveal parts of a layer using a greyscal
 
 Click **Add Mask** on any layer row. The add-on will:
 
-- Create a new 1024 × 1024 white image (fully revealing by default)
+- Create a new 1024 × 1024 white image (fully revealing by default), stored without an alpha channel
 - Assign it as the mask for that layer
 - Automatically enable the mask and set it as the active paint target
 
@@ -220,9 +233,7 @@ For a full description of every available blend mode, see [Section 7](#7-blend-m
 
 **Reordering** is done with the **▲** and **▼** buttons on each layer row. Moving a layer up increases its priority in the blend stack (it composites on top of more layers). Moving it down decreases priority.
 
-**Duplicating** a layer via the **⎘** (copy) icon creates an independent copy inserted directly below the original. The duplicate shares the same image and mask data-blocks as the source but has its own internal node group — modifying one does not affect the other.
-
-> **Note:** If you need a fully independent copy with its own pixel data (so you can paint on the duplicate without affecting the original), duplicate the layer and then create a new image from within the image selector on the duplicate.
+**Duplicating** a layer via the **⎘** (copy) icon creates an independent copy inserted directly below the original. The duplicate gets its own internal node group — modifying one layer's node group does not affect the other. Both copies initially reference the same image and mask data-blocks. If you need fully independent pixel data, use the image selector on the duplicate to create or open a new image.
 
 ---
 
@@ -252,6 +263,8 @@ The **Utilities** section sits at the bottom of the Paint Layers panel and provi
 
 This button is also useful after any operation that modifies layer data programmatically (e.g. via a script) and you want to guarantee the viewport reflects the current state.
 
+**Internally,** the Opacity slider uses a fast, targeted callback (`_opacity_update`) that patches only a single Math node rather than rebuilding the whole node tree. Apply Opacity triggers the full rebuild as a manual override when that incremental patch is not enough to satisfy the EEVEE cache. See [Section 8.8](#88-opacity-update-architecture) for more detail.
+
 ---
 
 ### 5.2 Merge Visible (Bake)
@@ -270,10 +283,10 @@ This button is also useful after any operation that modifies layer data programm
    - Create a new blank image at the chosen resolution
    - Insert a temporary bake target node into the material
    - Run a Diffuse bake pass (`bpy.ops.object.bake`)
-   - Remove the temporary node
+   - Remove the temporary node (always, even if baking fails)
    - Hide all previously visible layers
    - Add a **Merged Layer** at the top of the stack containing the baked result
-   - Restore the original render engine
+   - Restore the original render engine (always, even if an error occurred)
 
 > ⚠️ **Warning:** Baking freezes the Blender interface for several seconds — longer at high resolutions or on complex scenes. **Save your `.blend` file before using Merge Visible.** The undo history (Ctrl+Z) can recover the hidden layers, but the baked image data will be lost if Blender crashes before you save.
 
@@ -296,7 +309,8 @@ This button is also useful after any operation that modifies layer data programm
    - Create a new blank canvas at the target size
    - Centre the old content and copy it across (with bounds-checking to handle both upscaling and downscaling)
    - Replace each layer's image reference with the new resized image
-   - Adjust the Canvas object's world-space dimensions to maintain the correct aspect ratio
+   - Resize mask images using a no-alpha channel image, consistent with how masks are originally created
+   - Adjust the Canvas object's world-space dimensions to maintain the correct aspect ratio (only when all layers resize successfully)
 
 **What gets skipped:** Video (`.mp4`) and image-sequence layers cannot be resized this way — they are automatically skipped. The add-on will warn you if any layer could not be resized.
 
@@ -340,6 +354,7 @@ Clicking **Frame Camera** will:
 | **Resize crops, doesn't scale** | Downscaling with Resize Canvas crops from the centre rather than scaling down. Use Blender's Image Editor to scale images before loading them. |
 | **Minimum 2 layers for Merge** | Merge Visible requires at least 2 visible layers. If you only have one, duplicate it or add a blank layer before merging. |
 | **Camera zero-scale guard** | Frame Camera will fail if the canvas object's scale is zeroed. Apply scale with Ctrl+A first. |
+| **Node tree manual edits** | Any manual changes made inside the `LAYER_MANAGER_FRAME` in the Shader Editor will be overwritten the next time any layer property changes, because the add-on rebuilds the frame from scratch on every update. |
 
 ---
 
@@ -375,29 +390,72 @@ Clicking **Frame Camera** will:
 
 | Module | Responsibility |
 |---|---|
-| `__init__.py` | Add-on entry point. Registers modules in correct dependency order; configures the package-level logger. |
-| `constants.py` | Single source of truth for all magic strings, numeric defaults, and node identifiers. Edit this file to change defaults globally. |
-| `properties.py` | Custom Blender properties (`RasterLayerItem`, object-level collections). Defines the `_auto_update_tree` callback fired on most property changes, and the dedicated `_opacity_update` callback for the opacity slider. |
-| `engine.py` | `NodeTreeManager` class and `rebuild_node_tree()` function. All shader node construction, linking, and synchronisation lives here. |
-| `operators.py` | `bpy.types.Operator` subclasses for every user action. `BaseOperator` provides shared validation helpers. |
-| `ui.py` | `VIEW3D_PT_raster_layers` panel and all static drawing helpers. |
+| `__init__.py` | Add-on entry point. Configures the package-level logger, then registers modules in dependency order (Properties → Operators → UI); unregisters in reverse. |
+| `constants.py` | Single source of truth for all magic strings, numeric defaults, node identifiers, and error/info messages. Edit this file to change defaults globally. |
+| `properties.py` | Defines `RasterLayerItem` (a `PropertyGroup`) and the three object-level properties (`raster_layers`, `raster_active_index`, `raster_active_is_mask`). Contains `_auto_update_tree` (fires on most property changes) and `_opacity_update` (dedicated fast callback for the opacity slider). Also contains `_find_owner_object`, which resolves the owning scene object from a layer item by identity scan. |
+| `engine.py` | `NodeTreeManager` class and the top-level `rebuild_node_tree()` function. All shader node construction, linking, synchronisation, and orphan node group purging live here. |
+| `operators.py` | `bpy.types.Operator` subclasses for every user action. `BaseOperator` provides shared `_validate_active_object` / `_validate_active_material` helpers and unified reporting helpers. |
+| `ui.py` | `VIEW3D_PT_raster_layers` panel and all drawing helper methods. Draws layers in reverse index order so the highest-priority layer appears at the top. |
 
 ### 8.2 Data Flow
 
 ```
 User action in the UI panel
   → Operator.execute()
-  → modifies obj.raster_layers
+  → modifies obj.raster_layers  (or obj.raster_active_index, etc.)
   → calls rebuild_node_tree(obj)
-  → NodeTreeManager rebuilds the shader graph
+  → NodeTreeManager.clear_manager_frame()    — tears down old frame + purges orphan groups
+  → NodeTreeManager.build_composition_chain() — creates group nodes + mix chain
+  → NodeTreeManager.set_active_layer_selection() — highlights active node in Shader Editor
   → Blender's viewport updates
 ```
 
-Property changes (`image`, `blend_type`, `is_visible`, `use_mask`) trigger the `_auto_update_tree` callback automatically, so the node tree stays in sync without requiring an explicit operator call.
+Most property changes (`image`, `blend_type`, `is_visible`, `use_mask`, `mask_image`) trigger `_auto_update_tree`, which calls `rebuild_node_tree()` automatically — no explicit operator call is required.
 
-The `opacity` property uses a dedicated `_opacity_update` callback instead. Because opacity is a continuous float slider, Blender fires its update callback on every redraw tick during a drag — potentially dozens of times per second. Running a full `rebuild_node_tree()` on each tick causes noticeable lag on complex scenes. `_opacity_update` patches only the relevant Math node input in-place via `NodeTreeManager.update_layer_group()`, keeping the slider interaction smooth. The **Apply Opacity** button in the Utilities panel triggers a full rebuild as a manual override for cases where EEVEE's shader cache still delays the visual result.
+The `opacity` property uses the dedicated `_opacity_update` callback instead. See [Section 8.8](#88-opacity-update-architecture).
 
-### 8.3 Extending the Add-on
+### 8.3 RasterLayerItem Property Reference
+
+`RasterLayerItem` is a `PropertyGroup` stored in `obj.raster_layers` (a `CollectionProperty`). Each entry represents one layer.
+
+| Property | Type | Default | Update Callback | Description |
+|---|---|---|---|---|
+| `name` | `StringProperty` | `"Layer"` | — | User-visible layer name. |
+| `image` | `PointerProperty(Image)` | `None` | `_auto_update_tree` | Main texture image. Automatically enables `Auto Refresh` for movie/sequence sources. |
+| `mask_image` | `PointerProperty(Image)` | `None` | `_auto_update_tree` | Greyscale mask image. White = fully revealed; black = fully hidden. |
+| `use_mask` | `BoolProperty` | `True` | `_auto_update_tree` | Toggles whether the mask is applied in the composition. |
+| `is_visible` | `BoolProperty` | `True` | `_auto_update_tree` | Excludes the layer from the shader output and bake when `False`. |
+| `blend_type` | `EnumProperty` | `'MIX'` | `_auto_update_tree` | Blending algorithm. 19 options; see Section 7. Not shown for index-0 layer. |
+| `opacity` | `FloatProperty` | `1.0` | `_opacity_update` | Per-layer opacity, 0.0–1.0. Uses a fast targeted callback instead of full rebuild. |
+| `group_name` | `StringProperty` | `""` | — | Internal identifier of the `ShaderNodeTree` group created for this layer. Must not be edited manually. |
+
+Three additional properties are registered on `bpy.types.Object`:
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `raster_layers` | `CollectionProperty(RasterLayerItem)` | — | Ordered list of all layers on this object. |
+| `raster_active_index` | `IntProperty` | `0` | Index of the layer currently targeted for painting. |
+| `raster_active_is_mask` | `BoolProperty` | `False` | Whether the active paint target is the mask (`True`) or the main image (`False`). |
+
+### 8.4 Constants Reference
+
+All configurable values live in `constants.py`. The most commonly relevant ones:
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `NODE_FRAME_NAME` | `"LAYER_MANAGER_FRAME"` | Name of the protected frame node inside the material. |
+| `DEFAULT_CANVAS_SIZE` | `2.0` | World-space size of the generated canvas plane (metres). |
+| `DEFAULT_MASK_RESOLUTION` | `1024` | Pixel size of automatically created masks. |
+| `DEFAULT_MERGE_RESOLUTION` | `1024` | Default bake resolution for Merge Visible. |
+| `DEFAULT_RENDER_RESOLUTION` | `1920` | Pixel length of the longest axis when Frame Camera sets render resolution. |
+| `DEFAULT_CAMERA_HEIGHT` | `5.0` | World-space distance above the canvas at which the camera is placed. |
+| `BAKE_ENGINE` | `"CYCLES"` | Render engine used during Merge Visible. |
+| `MIN_VISIBLE_LAYERS_FOR_MERGE` | `2` | Minimum visible layers required to run Merge Visible. |
+| `MASK_IMAGE_ALPHA` | `False` | Whether mask images are created with an alpha channel (they are not). |
+| `SHADER_TYPE_GROUP` | `"ShaderNodeGroup"` | String passed to `nodes.new()` to create a group node. |
+| `SHADER_NODE_GROUP_TYPE` | `"GROUP"` | Value returned by `n.type` for group nodes — distinct from the above. |
+
+### 8.5 Extending the Add-on
 
 #### Adding a New Operator
 
@@ -408,19 +466,133 @@ The `opacity` property uses a dedicated `_opacity_update` callback instead. Beca
 
 #### Adding a New Blend Mode
 
-1. Add an entry to the `blend_type` `EnumProperty` in `properties.py`.
+1. Add an entry to the `blend_type` `EnumProperty` items list in `properties.py`.
 2. Blender's `ShaderNodeMix` supports all standard blend modes natively — no changes to `engine.py` are required.
 
 #### Adding a New Layer Property
 
 1. Define the `bpy.props.*` field in `RasterLayerItem` in `properties.py`.
-2. Add `update=_auto_update_tree` to the property definition so the node tree rebuilds automatically on change. If the property is a continuous value that may fire rapidly (like a float slider), consider a dedicated lightweight callback on the model of `_opacity_update` instead.
+2. Add `update=_auto_update_tree` to the property definition so the node tree rebuilds automatically on change. If the property is a continuous value that may fire rapidly (like a float slider), write a dedicated lightweight callback modelled on `_opacity_update` instead, to avoid per-tick full rebuilds.
 3. Handle the new property in `NodeTreeManager.update_layer_group()` in `engine.py`.
 4. Expose the property in `ui.py` inside `_draw_layer_item()`.
 
 ---
 
-## 9. Quick-Start Cheat Sheet
+### 8.6 Blender Version Compatibility
+
+The add-on explicitly handles a breaking change introduced in Blender 5.1 regarding group node strings:
+
+| Context | Correct value | Wrong value |
+|---|---|---|
+| `nodes.new(…)` — creating a group node | `"ShaderNodeGroup"` (`SHADER_TYPE_GROUP`) | `"GROUP"` |
+| `n.type` — reading a node's type | `"GROUP"` (`SHADER_NODE_GROUP_TYPE`) | `"ShaderNodeGroup"` |
+
+Using the wrong string in either context produces a silent failure in Blender 5.1. The codebase uses distinct named constants for each case (`SHADER_TYPE_GROUP` vs `SHADER_NODE_GROUP_TYPE`) to make the distinction explicit.
+
+Similarly, `ShaderNodeMix` socket names (`'A'`, `'B'`, `'Factor'`, `'Result'`) are accessed by name rather than by numeric index, because socket indices are undocumented and subject to change across Blender versions.
+
+In Blender 5.1+, `image_paint.brush` became read-only and is managed by the tool system. The Paint Settings section therefore displays the active brush name as a label rather than using `template_ID`, which would render a misleading red box.
+
+---
+
+### 8.7 Multi-Canvas Safety
+
+Layer property callbacks (`_auto_update_tree`, `_opacity_update`) need to know which scene object owns the layer that changed. Using `context.active_object` is unreliable in multi-canvas scenes, because the user may have a different object selected while a script mutates a layer on another object.
+
+The add-on resolves the owning object via `_find_owner_object(layer_item)`, which scans `bpy.context.scene.objects` (current scene only — not `bpy.data.objects`, which includes all scenes and linked libraries) and compares each layer by Python identity until it finds the owner.
+
+Performance note: this scan is O(objects × layers). In typical scenes with a handful of canvases and a few layers each, this is negligible. If performance becomes a concern for very large scenes, consider caching the owner object name on the layer item and using it as an O(1) fast path with a fallback to the full scan when stale.
+
+The function also guards against `bpy.context.scene` being `None`, which can occur in headless/background-render mode.
+
+---
+
+### 8.8 Opacity Update Architecture
+
+The `opacity` property fires `_opacity_update` instead of the general `_auto_update_tree`. The reason is performance: a float slider fires its update callback on every redraw tick during a drag — potentially dozens of times per second. Calling `rebuild_node_tree()` each time would tear down and reconstruct the entire shader graph on each tick, causing noticeable lag on scenes with many layers.
+
+`_opacity_update` instead calls only `NodeTreeManager.update_layer_group(ng, layer)`, which patches the single `Math (Multiply)` node's input value in-place. This is sufficient for a pure opacity change and keeps the slider interaction smooth.
+
+The **Apply Opacity** button in the Utilities panel triggers a full `rebuild_node_tree()` as a manual override for the rare cases where EEVEE's shader cache still delays the visual result despite the targeted patch.
+
+```
+Opacity slider drag
+  → _opacity_update (fires on every tick)
+    → NodeTreeManager.update_layer_group()   ← patches Math node only
+    → fast, no graph rebuild
+
+Apply Opacity button
+  → RASTER_OT_sync_layers.execute()
+    → rebuild_node_tree()                    ← full rebuild, flushes cache
+```
+
+---
+
+### 8.9 Node Group Lifecycle
+
+Each layer has its own `ShaderNodeTree` group, referenced by `layer.group_name`. Understanding when groups are created, reused, and destroyed is important when scripting against the add-on.
+
+**Creation:** `NodeTreeManager.create_or_update_layer_group(layer)` is called during `build_composition_chain()`. If `layer.group_name` already points to a valid, correctly-structured group, it is reused. If the group is missing, has a stale name, or is missing expected sockets, a new group is created and `layer.group_name` is updated.
+
+**Duplication:** `RASTER_OT_duplicate_layer` explicitly clears `new_layer.group_name = ""` before the rebuild so that the duplicate is always assigned a new, independent group. Without this, both layers would share a group and mutate each other's state.
+
+**Deletion:** When `NodeTreeManager.clear_manager_frame()` tears down the frame, it:
+1. Snapshots references to all node groups before removing their group nodes (important: users drop to 0 only after removal, so the snapshot must happen first).
+2. Removes all child nodes.
+3. Calls `bpy.data.node_groups.remove(ng)` on any group whose `users` count drops to 0, preventing orphan data-block accumulation over a long session.
+
+The group name is saved to a local variable before `remove()` is called because accessing `ng.name` after removal raises a `ReferenceError` in Blender 5.1.
+
+---
+
+## 9. Changelog
+
+### Version 1.1.0
+
+This release consolidates a series of targeted bug fixes across all modules. Changes are grouped by area.
+
+#### Logging & Registration
+- Attached a `StreamHandler` to the package root logger inside `register()` so that log output from all sub-modules is visible in Blender's System Console from the moment the add-on is enabled. A guard prevents duplicate handlers on reload without a full Blender restart.
+
+#### Node Tree / Engine (`engine.py`)
+- **Mask toggle fix:** Mask factor input links are now always cleared before conditionally re-wiring, preventing the mask factor from getting stuck after toggling `use_mask` off and back on.
+- **Default opacity fix:** Both inputs of the `Math (Multiply)` opacity node are initialised to `1.0` when a new layer group is created, so new layers are fully opaque by default instead of transparent.
+- **Base Color link fix:** The existing Base Color link is always cleared before attempting to connect the new final output — even when `build_composition_chain` returns `None` — to avoid showing a stale rendered result when all node groups fail.
+- **Orphan group purge:** Group node references are snapshotted before their parent nodes are removed, ensuring the `users == 0` check is accurate. Groups with no remaining users are purged with `bpy.data.node_groups.remove()`, preventing data-block accumulation.
+- **Blender 5.1 `nodes.new()` fix:** Group nodes are created using `"ShaderNodeGroup"` (not `"GROUP"`); `n.type` checks use `"GROUP"`. Two separate named constants make the distinction explicit.
+- **Blender 5.1 socket access fix:** `ShaderNodeMix` inputs/outputs are accessed by name (`'A'`, `'B'`, `'Factor'`, `'Result'`) instead of numeric index.
+- **Node placement counter fix:** A dedicated placement counter (rather than the enumerate index) is used when positioning nodes, so gaps do not appear in the Shader Editor when a layer's node group fails to be created.
+
+#### Operators (`operators.py`)
+- **Canvas duplicate name warning:** If Blender silently renames the new canvas object because `"Canvas"` already exists, the user is now warned both in the viewport header and the System Console.
+- **Remove layer active-index fix:** The `was_active_index` is captured before `raster_layers.remove()` is called, so the `raster_active_is_mask` reset correctly targets only the deleted layer (not an unrelated surviving layer at the same index after clamping).
+- **Duplicate layer group fix:** `new_layer.group_name` is explicitly cleared on duplication, ensuring the duplicate always receives an independent node group.
+- **Merge Visible render engine restore:** `orig_engine` is saved before the inner `try` block so the `finally` clause can always restore it, even when an early validation error is raised.
+- **Merge Visible bake node cleanup:** The temporary bake target node is removed in a `finally` block, guaranteeing removal on both success and failure.
+- **Merge Visible layer snapshot fix:** `visible_layers` is computed once before the initial `rebuild_node_tree()` call, so the same list is used for the minimum-layer check and for hiding originals.
+- **Resize Canvas material validation:** `_validate_active_material()` is called before resizing begins, so a missing material produces a clear error rather than a silent failure.
+- **Resize Canvas failure tracking:** Per-layer resize failures are tracked and reported to the user; the object's world-space dimensions are only adjusted when all layers resized successfully.
+- **Resize Canvas mask alpha fix:** Mask images are resized using `MASK_IMAGE_ALPHA = False` (no alpha channel), consistent with how masks are originally created.
+- **Resize Canvas mask guard:** The mask resize call is explicitly guarded on `layer.mask_image is not None`, making the intent clear rather than relying on the internal early-return of `_resize_image_canvas`.
+- **Frame Camera zero-scale guard:** Returns an error if the canvas object has zero dimensions, preventing an invisible camera viewport.
+- **`MASK_IMAGE_ALPHA` constant:** Replaces the confusing `not DEFAULT_IMAGE_ALPHA` expression in `create_mask` and `_resize_image_canvas`.
+
+#### Properties (`properties.py`)
+- **Multi-canvas owner resolution:** `_find_owner_object()` scans `bpy.context.scene.objects` (current scene only) instead of using `context.active_object`, preventing callbacks from operating on the wrong canvas in multi-canvas scenes or when properties are mutated via script.
+- **Scene scope fix:** Uses `bpy.context.scene.objects` instead of `bpy.data.objects` to avoid returning objects from other scenes or linked libraries.
+- **Headless mode guard:** `_find_owner_object()` returns `None` early when `bpy.context.scene is None` (headless/background-render mode).
+- **Canvas aspect ratio fix:** `_auto_update_tree` adjusts `obj.dimensions` (world-space) rather than `obj.scale` when auto-fitting the canvas to a newly loaded background image, preventing compounding scale errors on non-unit canvases.
+- **Opacity performance fix:** `opacity` uses a dedicated `_opacity_update` callback that patches only the Math node in-place, instead of triggering a full `rebuild_node_tree()` on every slider tick.
+
+#### UI (`ui.py`)
+- **Panel open by default:** Removed `'DEFAULT_CLOSED'` from panel options so the panel is immediately visible after enabling the add-on.
+- **Empty layer list hint:** A helpful `INFO` label is shown when no layers exist yet.
+- **Reorder button direction fix:** `TRIA_UP` now correctly fires `direction='UP'` and `TRIA_DOWN` fires `direction='DOWN'`. Previously the directions were swapped to compensate for the reversed draw order, making the code misleading. The reversed draw order is now handled exclusively in `_draw_layer_list`.
+- **Blender 5.1 brush selector fix:** Replaced `template_ID` for the active brush (which renders a red box in 5.1 because `image_paint.brush` is read-only) with a label displaying the brush name, followed by the standard brush property controls.
+
+---
+
+## 10. Quick-Start Cheat Sheet
 
 | Goal | Action |
 |---|---|
