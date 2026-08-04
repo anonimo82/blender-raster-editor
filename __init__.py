@@ -26,15 +26,15 @@ logger = logging.getLogger(__name__)
 
 bl_info = {
     "name": "Blender Raster Editor",
-    "author": "Gemini & User",
+    "author": "anonimo82",
     "version": (1, 1, 0),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Paint Layers",
     "description": "Non-destructive layer system for hand-painting and rotoscoping",
     "category": "Paint",
     "support": "COMMUNITY",
-    "doc_url": "https://github.com/your-repo",
-    "tracker_url": "https://github.com/your-repo/issues",
+    "doc_url": "https://github.com/anonimo82/blender-raster-editor/wiki",
+    "tracker_url": "https://github.com/anonimo82/blender-raster-editor/issues",
 }
 
 
